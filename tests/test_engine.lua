@@ -329,6 +329,28 @@ do
     check(m and #m.cards == 6 and m.wilds == 0, "bot adds 5 and 6 together without spending the wild")
     m = botAddsTo("7H 7S 7D", "7C 7H/2 9C KD 10H JH")
     check(m and #m.cards == 5, "bot adds several cards to a set at once")
+    local _, action = botAddsTo("4S 5S 6S 7S 8S 9S 10S", "2D 9C KD")
+    check(not (action and action.adds), "bot never spends a wild on a clean canasta")
+    _, action = botAddsTo("4S 5S 6S 7S 8S 9S", "2D 9C KD")
+    check(action and action.adds, "bot still uses a wild to complete a canasta")
+end
+
+do
+    -- Near the end of the round, bots weigh what a pile would leave stuck in hand.
+    local function botTakes(pile, opponentCards)
+        local g = scenario("canastra_brasileira", 2)
+        g.turn, g.phase = 2, "draw"
+        g.hasMelded = { true, true }
+        for _, d in ipairs(g.dead) do d.state = "taken" end
+        g.hands[2] = cards("AS AD 8H 10C JD")
+        g.hands[1] = cards(opponentCards)
+        g.pile = cards(pile)
+        return B.drawAction(g, 2).type == "takePile"
+    end
+    local loaded = "3S 3C 9H 5D KS QH 6C AH/2"
+    check(botTakes(loaded, "4H 7S 9D 10H JS QC KC 6D 8S"), "mid-round, bot takes the pile for the aces")
+    check(not botTakes(loaded, "4H 7S"), "near the end, bot leaves a pile full of black threes")
+    check(botTakes("7D AH/2", "4H 7S"), "near the end, bot still takes a small pile that pays off")
 end
 
 -- ------------------------------------------------------------ full bot simulations

@@ -98,6 +98,15 @@ local function contains(list, id)
     return C.indexOf(list, id) ~= nil
 end
 
+-- A clean canasta is worth more than anything a wild could add to it.
+local function dirtiesCleanCanasta(m, cards, rules)
+    if not (m.clean and #m.cards >= Canastra.Rules.CANASTA_SIZE) then return false end
+    local all = C.copyList(m.cards)
+    for _, id in ipairs(cards) do all[#all + 1] = id end
+    local res = M.analyze(all, rules, m.kind)
+    return res ~= nil and not res.clean
+end
+
 local function meldScore(res)
     local s = #res.cards * 10
     if res.clean then s = s + 15 end
@@ -112,7 +121,7 @@ local function topMeldSpec(g, seat, top)
     local hand = g.hands[seat]
     for _, m in ipairs(g.melds[team]) do
         local action = { type = "takePile", addTo = m.id, cards = {} }
-        if E.check(g, seat, action) then return action end
+        if not dirtiesCleanCanasta(m, { top }, rules) and E.check(g, seat, action) then return action end
     end
     local pool = C.copyList(hand)
     pool[#pool + 1] = top
@@ -165,9 +174,9 @@ local function cardIsUseful(g, seat, id)
     return false
 end
 
--- How many pile cards the seat could actually use: wilds, cards extending the team's melds,
+-- Pile cards the seat could actually use: wilds, cards extending the team's melds,
 -- and cards forming new melds together with the hand.
-local function pileUsefulCount(g, seat)
+local function pileUseful(g, seat)
     local rules = g.rules
     local team = g.teamOf[seat]
     local useful = {}
@@ -189,9 +198,52 @@ local function pileUsefulCount(g, seat)
             if contains(g.pile, id) then useful[id] = true end
         end
     end
+    return useful
+end
+
+local function pileUsefulCount(g, seat)
     local count = 0
-    for _ in pairs(useful) do count = count + 1 end
+    for _ in pairs(pileUseful(g, seat)) do count = count + 1 end
     return count
+end
+
+-- The round may end within a turn or two: the stock is running out, or someone with few cards
+-- has no dead pile left to pick up.
+local function roundEnding(g)
+    if #g.stock <= g.n * 2 then return true end
+    for s = 1, g.n do
+        if #g.hands[s] <= 4 and not E.claimableDead(g, g.teamOf[s]) then return true end
+    end
+    return false
+end
+
+-- What a card left in hand costs when the round ends.
+local function handCost(id, rules)
+    local penalty = rules.blackThreePenalty or 0
+    if penalty > 0 and C.isBlackThree(id) then return penalty end
+    return C.value(id, rules)
+end
+
+-- Near the end of the round, pile cards the seat cannot lay down are likely to be caught in hand.
+-- The take must lay down at least as many points as it risks: usable pile cards count once, hand
+-- cards melded with the top count twice (they also stop counting against the hand).
+local function pileWorthTaking(g, seat, action)
+    if not roundEnding(g) then return true end
+    local rules = g.rules
+    local useful = pileUseful(g, seat)
+    local gain, risk = 0, 0
+    for _, id in ipairs(g.pile) do
+        if useful[id] then
+            gain = gain + C.value(id, rules)
+        else
+            risk = risk + handCost(id, rules)
+        end
+    end
+    for _, m in ipairs(action.melds or {}) do
+        for _, id in ipairs(m.cards) do gain = gain + 2 * C.value(id, rules) end
+    end
+    for _, id in ipairs(action.cards or {}) do gain = gain + 2 * C.value(id, rules) end
+    return gain >= risk
 end
 
 function B.drawAction(g, seat)
@@ -199,15 +251,16 @@ function B.drawAction(g, seat)
     local n = #g.pile
     if n > 0 then
         local top = g.pile[n]
+        local action
         if rules.pileTake == "free" and not rules.pileFreeze then
             if cardIsUseful(g, seat, top) and (#g.hands[seat] >= 3 or pileUsefulCount(g, seat) >= 2) then
-                local action = { type = "takePile" }
-                if E.check(g, seat, action) then return action end
+                action = { type = "takePile" }
+                if not E.check(g, seat, action) then action = nil end
             end
         else
-            local action = topMeldSpec(g, seat, top)
-            if action then return action end
+            action = topMeldSpec(g, seat, top)
         end
+        if action and pileWorthTaking(g, seat, action) then return action end
     end
     return { type = "draw" }
 end
@@ -281,8 +334,9 @@ local function findAdd(g, seat, allowWild)
         local wild = M.isWild(id, rules)
         if not wild or allowWild then
             for _, m in ipairs(g.melds[team]) do
-                -- Wilds are only spent to complete a canasta or to empty a small hand.
+                -- Wilds are only spent to complete a canasta or to empty a small hand, never on a clean one.
                 local worth = not wild or #m.cards + 1 >= Canastra.Rules.CANASTA_SIZE or #hand <= 3
+                if wild and dirtiesCleanCanasta(m, { id }, rules) then worth = false end
                 if worth then
                     local cards = C.copyList(m.cards)
                     cards[#cards + 1] = id
