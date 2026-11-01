@@ -26,12 +26,12 @@ T.VIEW = {
 }
 local FRAME_UNITS = 1.67
 -- Height of the table edge in the same units; the table is drawn over everything below it.
-local TABLE_EDGE = 0.75
+local TABLE_EDGE = 0.68
 
 -- ------------------------------------------------------------------ geometry
 
 function T.bandH()
-    return D.HAND_H
+    return math.floor(D.HAND_H * 1.2)
 end
 
 function T.tableH()

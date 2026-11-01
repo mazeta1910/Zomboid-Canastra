@@ -63,9 +63,12 @@ local function humanStep(win, g, seat)
     if a.type == "draw" then
         local had = {}
         for _, id in ipairs(g.hands[seat]) do had[id] = true end
+        local replaced = {}
+        for id in pairs(win.fresh or {}) do replaced[#replaced + 1] = id end
         if not clickHit(win, function(r) return r.fn == CanastraGameWindow.clickStock end) then return false, "stock hit" end
-        drawnThisTurn = {}
+        drawnThisTurn, handAfterDraw = replaced, {}
         for _, id in ipairs(g.hands[seat]) do
+            handAfterDraw[id] = true
             if not had[id] then drawnThisTurn[#drawnThisTurn + 1] = id end
         end
     elseif a.type == "takePile" then
@@ -218,13 +221,20 @@ local function playMatch(preset, n, rounds)
             if expected[i] ~= win.order[i] then unsorted = unsorted + 1 break end
         end
         if t.game.turn == CC.seat and t.game.phase == "play" then
-            for _, id in ipairs(drawnThisTurn or {}) do
-                if C.indexOf(t.game.hands[CC.seat], id) and not (win.fresh and win.fresh[id]) then
-                    notHighlighted = (notHighlighted or 0) + 1
+            local drawn = drawnThisTurn or {}
+            local gainedMore = false
+            for _, id in ipairs(t.game.hands[CC.seat]) do
+                if handAfterDraw and not handAfterDraw[id] then gainedMore = true end
+            end
+            for _, id in ipairs(drawn) do
+                local lit = win.fresh and win.fresh[id]
+                if C.indexOf(t.game.hands[CC.seat], id) then
+                    if #drawn == 1 and not gainedMore and not lit then notHighlighted = (notHighlighted or 0) + 1 end
+                    if #drawn > 1 and lit then wronglyHighlighted = (wronglyHighlighted or 0) + 1 end
                 end
             end
         else
-            drawnThisTurn = nil
+            drawnThisTurn, handAfterDraw = nil, nil
         end
         local g = t.game
         if g.phase == "roundOver" or g.phase == "matchOver" then
@@ -382,9 +392,24 @@ if pt then
     g.turn, g.phase = me, "draw"
     local aceS, aceH, aceD = C.make(1, 1, 1), C.make(1, 2, 1), C.make(2, 4, 1)
     g.hands[me] = { aceS, aceH, C.make(1, 3, 5), C.make(1, 4, 7), C.make(1, 1, 9), C.make(1, 2, 12) }
-    g.pile = { C.make(2, 3, 6), aceD }
+    g.pile = { C.make(2, 3, 6), C.make(2, 4, 9), C.make(2, 1, 8), aceD }
     S.pushState(pt)
     local win = CanastraGameWindow.instance
+    local function drawn(text)
+        MOCK_TEXT_DRAWN = {}
+        win:prerender()
+        win:render()
+        for _, s in ipairs(MOCK_TEXT_DRAWN) do
+            if s == text then return true end
+        end
+        return false
+    end
+    check(drawn(CC.text("Turn_Yours")), "turn badge shouts when it is our turn")
+    g.turn = me % 2 + 1
+    S.pushState(pt)
+    check(drawn(CC.text("Turn_Of", CC.seatName(g.turn))), "turn badge names whose turn it is")
+    g.turn = me
+    S.pushState(pt)
     renderAll()
     check(clickHit(win, function(r) return r.fn == CanastraGameWindow.clickPile end), "pile clicked first")
     check(win.pileArmed and g.phase == "draw", "clicking the pile with nothing selected sets its top card aside")
@@ -400,6 +425,36 @@ if pt then
     end
     check(found, "the three aces were melded")
     check(not win.pileArmed, "pile no longer set aside after taking it")
+    check(next(win.fresh) == nil, "cards taken with the pile are not highlighted")
+
+    -- the top and the selection could extend a meld: the player chooses join or separate
+    local function setupJoin()
+        local team = g.teamOf[me]
+        local res = Canastra.Melds.analyze({ C.make(1, 3, 9), C.make(1, 2, 2), C.make(1, 3, 11), C.make(1, 3, 12) }, g.rules, "seq")
+        res.id, res.team = g.nextMeldId, team
+        g.nextMeldId = g.nextMeldId + 1
+        g.melds[team] = { res }
+        g.turn, g.phase = me, "draw"
+        g.hands[me] = { C.make(1, 3, 8), C.make(1, 3, 7), C.make(1, 1, 5), C.make(1, 4, 10) }
+        g.pile = { C.make(2, 1, 9), C.make(2, 3, 6) }
+        S.pushState(pt)
+        win:clickPile()
+        advance(600)
+        win:toggleCard(C.make(1, 3, 8))
+        advance(600)
+        win:toggleCard(C.make(1, 3, 7))
+        return res.id
+    end
+    local joinId = setupJoin()
+    check(g.phase == "draw" and win.joinable and win.joinable[joinId], "6-7-8 that also fits the run waits for a choice")
+    CC.message = nil
+    check(win:statusText() == CC.text("Hint_PileJoinOrNew"), "status explains the join-or-separate choice")
+    win:clickOwnMeld(joinId)
+    check(g.phase == "play" and #g.melds[g.teamOf[me]] == 1 and #g.melds[g.teamOf[me]][1].cards == 7,
+        "clicking the highlighted meld joins the cards to it")
+    setupJoin()
+    win:clickPile()
+    check(g.phase == "play" and #g.melds[g.teamOf[me]] == 2, "clicking the pile melds them separately")
 
     -- clicking the pile again cancels
     g.turn, g.phase = me, "draw"
@@ -408,13 +463,33 @@ if pt then
     win:clickPile()
     win:clickPile()
     check(not win.pileArmed, "clicking the pile again cancels")
+
+    -- the hand's first drawn card: discarding it swaps it for another instead of ending the turn
+    g.turn, g.phase, g.redrawOpen, g.redrawCard = me, "draw", true, nil
+    g.melds[g.teamOf[me]] = {}
+    g.hands[me] = { C.make(1, 1, 5), C.make(1, 4, 10) }
+    g.pile = {}
+    S.pushState(pt)
+    win:clickStock()
+    local first = g.redrawCard
+    check(first ~= nil and CC.view.redrawCard == first, "first draw of the hand can be swapped")
+    CC.message = nil
+    check(win:statusText() == CC.text("Status_Redraw", CC.cardName(first)), "status offers the swap")
+    win.selected = { [first] = true }
+    win:clickPile()
+    check(g.turn == me and g.phase == "play" and g.pile[#g.pile] == first and #g.hands[me] == 3
+        and not C.indexOf(g.hands[me], first), "discarding the first drawn card swaps it and keeps the turn")
+    win.selected = { [g.hands[me][1]] = true }
+    win:clickPile()
+    check(g.turn ~= me, "the next discard ends the turn as usual")
     win:leave()
     win:leave()
 end
 CC.message = nil
 
 print("  first-draw swaps clicked through the UI: " .. tostring(redrawsByUI or 0))
-check((notHighlighted or 0) == 0, "drawn cards stay highlighted for the whole turn (" .. tostring(notHighlighted or 0) .. " misses)")
+check((notHighlighted or 0) == 0, "a single drawn card stays highlighted for the whole turn (" .. tostring(notHighlighted or 0) .. " misses)")
+check((wronglyHighlighted or 0) == 0, "several cards drawn at once are not highlighted (" .. tostring(wronglyHighlighted or 0) .. ")")
 check(MOCK_STATS.BOREDOM < 50 and MOCK_STATS.STRESS < 0.5, "playing reduced boredom and stress")
 
 for _, e in ipairs(MOCK_ERRORS) do

@@ -150,8 +150,10 @@ function M.analyzeSeq(cards, rules)
     local best
     -- A two of the run's own suit may stand in its natural place instead of acting as a wild.
     local naturalTwo
-    for i, id in ipairs(twos) do
-        if C.suit(id) == suit then naturalTwo = i break end
+    if rules.naturalTwo then
+        for i, id in ipairs(twos) do
+            if C.suit(id) == suit then naturalTwo = i break end
+        end
     end
     for opt = 0, 1 do
         if opt == 0 or naturalTwo then

@@ -119,6 +119,7 @@ function W:clearSelection()
     self.staged = {}
     self.targetMeld = nil
     self.pileArmed = nil
+    self.joinable = nil
 end
 
 function W:refresh()
@@ -142,15 +143,24 @@ function W:refresh()
     if self.sortMode == "rank" then C.sortByRank(order) else C.sortBySuit(order) end
     self.order = order
     local myTurn = v.turn == v.you and (v.phase == "draw" or v.phase == "play")
-    -- Cards gained this turn stay highlighted until the turn ends.
+    -- A single card gained this turn stays highlighted until the turn ends; taking several
+    -- (the pile, a two-card draw) highlights nothing.
     local previous = myTurn and self.fresh or {}
     self.fresh = {}
+    local gained = 0
     for id in pairs(previous) do
-        if inHand[id] then self.fresh[id] = true end
+        if inHand[id] then
+            self.fresh[id] = true
+            gained = gained + 1
+        end
     end
     if not firstDeal then
-        for _, id in ipairs(fresh) do self.fresh[id] = true end
+        for _, id in ipairs(fresh) do
+            self.fresh[id] = true
+            gained = gained + 1
+        end
     end
+    if gained > 1 then self.fresh = {} end
     for id in pairs(self.selected) do
         if not inHand[id] then self.selected[id] = nil end
     end
@@ -160,6 +170,7 @@ function W:refresh()
     end
     if v.phase ~= "draw" then self.targetMeld = nil end
     if not myTurn or v.phase ~= "draw" or #(v.pile or {}) == 0 then self.pileArmed = nil end
+    if not self.pileArmed then self.joinable = nil end
     for i = #self.staged, 1, -1 do
         for _, id in ipairs(self.staged[i]) do
             if not inHand[id] then
@@ -191,6 +202,15 @@ end
 
 -- ------------------------------------------------------------------ actions
 
+-- Discarding the hand's first drawn card while its swap is still open swaps it for another.
+local function discard(v, id)
+    if v.redrawCard == id then
+        CC.action({ type = "redraw" })
+    else
+        CC.action({ type = "discard", card = id })
+    end
+end
+
 function W:toggleCard(id)
     local now = getTimestampMs()
     local v = CC.view
@@ -198,7 +218,7 @@ function W:toggleCard(id)
         self.lastClick.id = nil
         if isMyTurn(v) and v.phase == "play" then
             self.selected = {}
-            CC.action({ type = "discard", card = id })
+            discard(v, id)
             return
         end
     end
@@ -207,19 +227,39 @@ function W:toggleCard(id)
     if self.pileArmed then self:tryArmedTake() end
 end
 
--- After clicking the pile first: takes it as soon as the selected hand cards form a meld with its top.
+-- Own melds that these cards would extend; the server refuses joining alongside staged melds
+-- or onto a frozen pile.
+local function joinableMelds(self, v, cards)
+    if #self.staged > 0 or v.rules.pileFreeze then return nil end
+    local found
+    for _, m in ipairs(v.melds[myTeam(v)] or {}) do
+        local all = C.copyList(m.cards)
+        for _, id in ipairs(cards) do all[#all + 1] = id end
+        if M.analyze(all, v.rules, m.kind) then
+            found = found or {}
+            found[m.id] = true
+        end
+    end
+    return found
+end
+
+-- After clicking the pile first: takes it as soon as the selected hand cards form a meld with its top,
+-- unless they could also join an existing meld, in which case the player picks the meld or the pile.
 function W:tryArmedTake()
     local v = CC.view
     local top = v and v.pile and v.pile[#v.pile]
+    self.joinable = nil
     if not (isMyTurn(v) and v.phase == "draw" and top) then
         self.pileArmed = nil
         return
     end
     local sel = self:selectedList()
-    if #sel < 2 then return end
+    if #sel == 0 then return end
     local cards = { top }
     for _, id in ipairs(sel) do cards[#cards + 1] = id end
-    if not M.analyze(cards, v.rules) then return end
+    self.joinable = joinableMelds(self, v, cards)
+    if self.joinable then return hint("Hint_PileJoinOrNew") end
+    if #sel < 2 or not M.analyze(cards, v.rules) then return end
     local melds = { { cards = sel } }
     for _, m in ipairs(self.staged) do melds[#melds + 1] = { cards = m } end
     self:clearSelection()
@@ -240,7 +280,7 @@ function W:clickPile()
     if v.phase == "play" then
         if #sel == 1 then
             self.selected = {}
-            CC.action({ type = "discard", card = sel[1] })
+            discard(v, sel[1])
         else
             hint("Hint_SelectOneDiscard")
         end
@@ -332,7 +372,7 @@ function W:discardSelected()
     local sel = self:selectedList()
     if #sel ~= 1 then return hint("Hint_SelectOneDiscard") end
     self.selected = {}
-    CC.action({ type = "discard", card = sel[1] })
+    discard(v, sel[1])
 end
 
 function W:redraw()
@@ -417,13 +457,24 @@ function W:drawMeldArea(team, x, y, width, rows, label, isOurs)
     for _, p in ipairs(placed) do
         local m = p.meld
         local target = isOurs and self.targetMeld == m.id
+        local joinable = isOurs and self.joinable and self.joinable[m.id]
         local hover = D.isHover(self, p.x - 2, p.y - 2, p.w + 4, D.MINI_H + 4)
         if target or (hover and canAct) then
             self:drawRect(p.x - 2, p.y - 2, p.w + 4, D.MINI_H + 4, 0.5, 0.9, 0.8, 0.2)
+        elseif joinable then
+            self:drawRect(p.x - 2, p.y - 2, p.w + 4, D.MINI_H + 4, 0.45, 0.3, 0.9, 0.3)
         end
         for i, id in ipairs(m.cards) do
             D.drawCard(self, id, p.x + (i - 1) * p.step, p.y, D.MINI_W, D.MINI_H, { mini = true })
         end
+        -- card count over the bottom-right corner of the last card
+        local count = tostring(#m.cards)
+        local cw, ch = D.textW(count) + 6, D.FH
+        local cx = p.x + (#m.cards - 1) * p.step + D.MINI_W - cw - 1
+        local cy = p.y + D.MINI_H - ch - 1
+        local cc = m.canasta and (m.clean and D.COLOR_GOLD or D.COLOR_DIM) or { r = 1, g = 1, b = 1 }
+        self:drawRect(cx, cy, cw, ch, 0.55, 0, 0, 0)
+        self:drawTextCentre(count, cx + cw / 2, cy, cc.r, cc.g, cc.b, 0.9, D.FONT)
         if m.canasta then
             local c = m.clean and D.COLOR_GOLD or D.COLOR_DIM
             self:drawRect(p.x, p.y + D.MINI_H + 1, p.w, 3, 1, c.r, c.g, c.b)
@@ -466,6 +517,42 @@ function W:drawPortraits(team, x, y)
     return #seats > 0 and (#seats - 1) * step + p or 0
 end
 
+-- Whose turn it is, centred in the score strip (kept between minX and maxX). Pulses gold on our turn.
+-- Returns the badge's right edge.
+function W:drawTurnBadge(v, minX, y, h, maxX)
+    local playing = v.phase == "draw" or v.phase == "play"
+    local mine = playing and v.turn == v.you
+    local text, font, fh
+    if not playing then
+        text, font, fh = CC.text("Turn_RoundOver"), D.FONT, D.FH
+    elseif mine then
+        text, font, fh = CC.text("Turn_Yours"), UIFont.Medium, D.FH_MED
+    else
+        text, font, fh = CC.text("Turn_Of", CC.seatName(v.turn)), D.FONT, D.FH
+    end
+    local w = D.textW(text, font) + 24
+    if w > maxX - minX then
+        font, fh = D.FONT, D.FH
+        text = D.fitText(text, maxX - minX - 24)
+        w = D.textW(text, font) + 24
+    end
+    local x = math.floor(math.max(minX, math.min(maxX - w, (self.width - w) / 2)))
+    if mine then
+        local pulse = 0.5 + 0.5 * math.sin(getTimestampMs() / 180)
+        self:drawRect(x - 3, y - 2, w + 6, h + 4, 0.25 + 0.35 * pulse, 1, 0.8, 0.15)
+        self:drawRect(x, y, w, h, 0.95, 0.85, 0.6, 0.08)
+        self:drawRectBorder(x, y, w, h, 1, 1, 0.92, 0.45)
+        self:drawTextCentre(text, x + w / 2, y + (h - fh) / 2, 0.12, 0.07, 0, 1, font)
+    else
+        local col = D.COLOR_GOLD
+        if playing then col = v.teamOf[v.turn] == myTeam(v) and D.COLOR_US or D.COLOR_THEM end
+        self:drawRect(x, y, w, h, 0.6, 0, 0, 0)
+        self:drawRectBorder(x, y, w, h, 0.9, col.r, col.g, col.b)
+        self:drawTextCentre(text, x + w / 2, y + (h - fh) / 2, col.r, col.g, col.b, 1, font)
+    end
+    return x + w
+end
+
 function W:renderScores(y)
     local v = CC.view
     local us, them = myTeam(v), myTeam(v) == 1 and 2 or 1
@@ -481,9 +568,14 @@ function W:renderScores(y)
     self:drawText(text, x, ty, D.COLOR_THEM.r, D.COLOR_THEM.g, D.COLOR_THEM.b, 1, D.FONT)
     x = x + D.textW(text) + 16
     local bx = self.width - PAD - D.ICON
+    local iconsLeft = bx - (D.ICON + 4) * 2 - 8
+    local badgeR = self:drawTurnBadge(v, x, y, p, iconsLeft)
     text = CC.text("ScoreInfo", tostring(v.rules.targetScore), tostring(v.round), CC.presetName(v.rules.preset))
-    text = D.fitText(text, bx - (D.ICON + 4) * 2 - 8 - x)
-    self:drawText(text, x, ty, 0.75, 0.75, 0.75, 1, D.FONT)
+    local infoW = iconsLeft - badgeR - 12
+    if infoW > D.FH * 3 then
+        text = D.fitText(text, infoW)
+        self:drawTextRight(text, iconsLeft, ty, 0.75, 0.75, 0.75, 1, D.FONT)
+    end
 
     local iy = y + math.floor((p - D.ICON) / 2)
     D.iconButton(self, bx, iy, "leave", CC.text("LeaveTip"), W.leave)
@@ -598,6 +690,7 @@ function W:statusText()
     if v.phase == "roundOver" or v.phase == "matchOver" then return CC.text("Status_RoundOver"), false end
     if CC.myAway() then return CC.text("Status_ReturnToTable"), true end
     if self.pileArmed and v.pile and #v.pile > 0 then
+        if self.joinable then return CC.text("Hint_PileJoinOrNew"), false end
         return CC.text("Hint_PileArmed", CC.cardName(v.pile[#v.pile])), false
     end
     local away = CC.awaySeat()
@@ -607,6 +700,7 @@ function W:statusText()
         if v.rules.pileTake == "free" and not v.rules.pileFreeze then return CC.text("Status_DrawFree"), false end
         return CC.text("Status_DrawClosed"), false
     end
+    if v.redrawCard then return CC.text("Status_Redraw", CC.cardName(v.redrawCard)), false end
     local s = CC.text("Status_Play")
     if (v.initialMin or 0) > 0 then s = s .. " " .. CC.text("Status_InitialMin", tostring(v.initialMin)) end
     return s, false
@@ -671,7 +765,8 @@ function W:renderHand(y)
         local fresh = self.fresh and self.fresh[id]
         local cy = baseY
         if sel then cy = y elseif fresh then cy = baseY - math.floor(raise / 2) end
-        D.drawCard(self, id, x, cy, D.HAND_W, D.HAND_H, { selected = sel, fresh = fresh })
+        local warn = v.rules.redThrees and C.isBlackThree(id)
+        D.drawCard(self, id, x, cy, D.HAND_W, D.HAND_H, { selected = sel, fresh = fresh, warn = warn })
         if fresh then
             local barW = i == n and D.HAND_W or math.min(step, D.HAND_W)
             self:drawRect(x, cy - 4, barW, 3, 1, 0.35, 0.95, 0.35)

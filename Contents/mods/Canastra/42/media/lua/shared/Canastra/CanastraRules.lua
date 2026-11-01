@@ -12,6 +12,7 @@ R.SCHEMA = {
     { key = "meldSets",          values = { true, false } },
     { key = "setRanks",          values = { "all", "A4K" } },
     { key = "twosWild",          values = { true, false } },
+    { key = "naturalTwo",        values = { true, false } },
     { key = "jokers",            values = { false, true } },
     { key = "wildRule",          values = { "one", "canasta" } },
     { key = "handSize",          values = { 11, 9, 13, 15, 0 } },
@@ -67,6 +68,7 @@ R.PRESETS = {
     },
     canastra_brasileira = {
         setRanks = "A4K", pileTake = "topMeld", pileLock = true, redThrees = "canasta", goOutRequires = "any",
+        naturalTwo = false,
         deadPiles = -1, firstRedraw = true, blackThreePenalty = 100,
     },
     custom = {},

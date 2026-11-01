@@ -154,7 +154,7 @@ local function drawCardArt(ui, id, x, y, w, h, pad, col, tint)
     end
 end
 
--- opts: back, mini, selected, fresh, highlight, dim
+-- opts: back, mini, selected, fresh, warn, highlight, dim
 function D.drawCard(ui, id, x, y, w, h, opts)
     opts = opts or {}
     ui:drawRect(x + 1, y + 2, w, h, 0.35, 0, 0, 0)
@@ -184,6 +184,10 @@ function D.drawCard(ui, id, x, y, w, h, opts)
         ui:drawRectBorder(x - 1, y - 1, w + 2, h + 2, 0.7, 0.35, 0.95, 0.35)
         for i = 0, 2 do
             ui:drawRectBorder(x + i, y + i, w - i * 2, h - i * 2, 1, 0.25, 0.85, 0.25)
+        end
+    elseif opts.warn then
+        for i = 0, 1 do
+            ui:drawRectBorder(x + i, y + i, w - i * 2, h - i * 2, 1, 0.9, 0.2, 0.2)
         end
     elseif opts.highlight then
         ui:drawRectBorder(x, y, w, h, 1, 0.3, 0.9, 0.3)

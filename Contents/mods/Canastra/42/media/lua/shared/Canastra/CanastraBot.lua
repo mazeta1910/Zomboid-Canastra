@@ -240,7 +240,7 @@ local function extensionPool(g, seat, m)
         if C.isJoker(id) then
             fits = false
         elseif m.kind == "seq" then
-            local naturalTwo = rules.twosWild and C.rank(id) == 2
+            local naturalTwo = rules.twosWild and rules.naturalTwo and C.rank(id) == 2
             fits = C.suit(id) == m.suit and (naturalTwo or not M.isWild(id, rules))
         else
             fits = not M.isWild(id, rules) and C.rank(id) == m.rank
