@@ -1,4 +1,4 @@
-# Buraco & Canastra — mod para Project Zomboid (Build 42)
+# Mazeta's Buraco & Canastra — mod para Project Zomboid (Build 42)
 
 Jogue Buraco e Canastra com os baralhos (`Base.CardDeck`) que você encontra no mundo. Mesas 1x1 ou 2x2 (duplas), com outros jogadores no multiplayer e bots completando os lugares vazios — ou sozinho contra bots no singleplayer. Enquanto joga, o personagem perde tédio, tristeza e estresse.
 
