@@ -2,6 +2,7 @@ require "ISUI/ISCollapsableWindow"
 require "Canastra/CanastraClient"
 require "Canastra/UI/CanastraDraw"
 require "Canastra/UI/CanastraRulesWindow"
+require "Canastra/UI/CanastraResultWindow"
 
 CanastraGameWindow = ISCollapsableWindow:derive("CanastraGameWindow")
 local W = CanastraGameWindow
@@ -64,9 +65,33 @@ function W:new(x, y, w, h)
 end
 
 function W:close()
+    if CanastraResultWindow.instance then CanastraResultWindow.instance:close() end
     ISCollapsableWindow.close(self)
     self:removeFromUIManager()
     if W.instance == self then W.instance = nil end
+end
+
+local function isOver(v)
+    return v.result ~= nil and (v.phase == "roundOver" or v.phase == "matchOver")
+end
+
+-- The result window opens once per finished round; closing it keeps it closed until reopened.
+function W:syncResult()
+    local v = CC.view
+    if v and isOver(v) then
+        local key = tostring(v.round) .. ":" .. v.phase
+        if self.resultKey ~= key then
+            self.resultKey = key
+            CanastraResultWindow.open(self)
+        end
+    else
+        self.resultKey = nil
+        if CanastraResultWindow.instance then CanastraResultWindow.instance:close() end
+    end
+end
+
+function W:showResult()
+    CanastraResultWindow.open(self)
 end
 
 -- ------------------------------------------------------------------ state
@@ -139,6 +164,7 @@ function W:refresh()
             end
         end
     end
+    self:syncResult()
 end
 
 function W:sort(mode)
@@ -556,6 +582,9 @@ function W:renderActions(y)
     if play and v.redrawCard then
         x = x + D.labelButton(self, x, y, "swap", CC.text("Redraw"), CC.text("RedrawTip", CC.cardName(v.redrawCard)), W.redraw) + 10
     end
+    if isOver(v) and not CanastraResultWindow.instance then
+        x = x + D.labelButton(self, x, y, "info", CC.text("ShowResult"), nil, W.showResult) + 10
+    end
     if #self.staged > 0 then
         local pts = stagedPoints(self, v.rules)
         local label = CC.text("Staged", tostring(#self.staged), tostring(pts), tostring(v.initialMin or 0))
@@ -603,70 +632,6 @@ function W:renderHand(y)
     return y + D.HAND_H + raise + 4
 end
 
-function W:renderResult()
-    local v = CC.view
-    local res = v.result
-    if not res then return end
-    local us, them = myTeam(v), myTeam(v) == 1 and 2 or 1
-    local rows = {
-        { "Res_Melds", "melds" }, { "Res_Canastas", "bonus" }, { "Res_GoOut", "goOut" },
-        { "Res_Hand", "hand" }, { "Res_Dead", "dead" },
-    }
-    if v.rules.redThrees then rows[#rows + 1] = { "Res_Red3", "red3" } end
-    if (v.rules.blackThreePenalty or 0) > 0 then rows[#rows + 1] = { "Res_Black3", "black3" } end
-    rows[#rows + 1] = { "Res_Total", "total" }
-    local lineH = D.FH + 2
-    local w = math.floor(360 * D.S)
-    local h = PAD * 2 + lineH * (#rows + 4) + D.ICON + 6
-    local x = (self.width - w) / 2
-    local y = (self.height - h) / 2
-    self:drawRect(x, y, w, h, 0.95, 0.03, 0.08, 0.05)
-    self:drawRectBorder(x, y, w, h, 0.8, D.COLOR_GOLD.r, D.COLOR_GOLD.g, D.COLOR_GOLD.b)
-    D.addHit(self, x, y, w, h, nil, nil, nil)
-    local cy = y + PAD
-    local title
-    if v.phase == "matchOver" then
-        title = CC.text(v.winner == us and "MatchWon" or "MatchLost")
-    elseif res.goOutTeam == us then
-        title = CC.text("RoundWentOutUs")
-    elseif res.goOutTeam == them then
-        title = CC.text("RoundWentOutThem")
-    else
-        title = CC.text("RoundStockEnded")
-    end
-    self:drawTextCentre(title, x + w / 2, cy, D.COLOR_GOLD.r, D.COLOR_GOLD.g, D.COLOR_GOLD.b, 1, D.FONT)
-    cy = cy + lineH + 4
-    local c1, c2 = x + w * 0.62, x + w - PAD
-    self:drawTextRight(CC.text("Us"), c1, cy, D.COLOR_US.r, D.COLOR_US.g, D.COLOR_US.b, 1, D.FONT)
-    self:drawTextRight(CC.text("Them"), c2, cy, D.COLOR_THEM.r, D.COLOR_THEM.g, D.COLOR_THEM.b, 1, D.FONT)
-    cy = cy + lineH
-    for _, r in ipairs(rows) do
-        local isTotal = r[2] == "total"
-        if isTotal then self:drawRect(x + PAD, cy - 1, w - PAD * 2, 1, 0.4, 1, 1, 1) end
-        local a = isTotal and 1 or 0.85
-        self:drawText(CC.text(r[1]), x + PAD, cy, a, a, a, 1, D.FONT)
-        self:drawTextRight(tostring(res.teams[us][r[2]] or 0), c1, cy, a, a, a, 1, D.FONT)
-        self:drawTextRight(tostring(res.teams[them][r[2]] or 0), c2, cy, a, a, a, 1, D.FONT)
-        cy = cy + lineH
-    end
-    self:drawText(CC.text("Res_Score"), x + PAD, cy + 2, 1, 1, 1, 1, D.FONT)
-    self:drawTextRight(tostring(v.scores[us]), c1, cy + 2, D.COLOR_US.r, D.COLOR_US.g, D.COLOR_US.b, 1, D.FONT)
-    self:drawTextRight(tostring(v.scores[them]), c2, cy + 2, D.COLOR_THEM.r, D.COLOR_THEM.g, D.COLOR_THEM.b, 1, D.FONT)
-    cy = cy + lineH + 8
-
-    if CC.isHost() then
-        local label = CC.text(v.phase == "matchOver" and "NewMatch" or "NextRound")
-        local bw = D.ICON + D.textW(label) + 6
-        local bx = x + w - PAD - bw
-        D.labelButton(self, bx, cy, "nextround", label, nil, function() CC.send("nextRound") end)
-        if v.phase == "matchOver" then
-            D.labelButton(self, x + PAD, cy, "back", CC.text("BackToLobby"), nil, function() CC.send("backToLobby") end)
-        end
-    else
-        self:drawTextCentre(CC.text("WaitingHost"), x + w / 2, cy + (D.ICON - D.FH) / 2, 0.7, 0.7, 0.7, 1, D.FONT)
-    end
-end
-
 function W:render()
     ISCollapsableWindow.render(self)
     if self.isCollapsed then return end
@@ -686,7 +651,6 @@ function W:render()
     y = self:drawMeldArea(us, PAD, y, width, US_ROWS, CC.text("OurMelds"), true) + 4
     y = self:renderActions(y)
     self:renderHand(y)
-    if v.phase == "roundOver" or v.phase == "matchOver" then self:renderResult() end
     D.drawTooltip(self)
 end
 

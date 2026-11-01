@@ -20,8 +20,9 @@ end
 local function advance(ms) MOCK_NOW = MOCK_NOW + ms end
 
 local function renderAll()
-    local wins = { CanastraLobbyWindow.instance, CanastraGameWindow.instance, CanastraRulesWindow.instance }
-    for i = 1, 3 do
+    local wins = { CanastraLobbyWindow.instance, CanastraGameWindow.instance, CanastraRulesWindow.instance,
+        CanastraResultWindow.instance }
+    for i = 1, 4 do
         local win = wins[i]
         if win then
             win.mouseOver = math.random() < 0.7
@@ -170,9 +171,22 @@ local function playMatch(preset, n, rounds)
         local g = t.game
         if g.phase == "roundOver" or g.phase == "matchOver" then
             played = played + 1
-            CC.send("nextRound")
+            local rw = CanastraResultWindow.instance
+            check(rw ~= nil, preset .. ": result window opens when the round ends")
+            renderAll()
+            check(rw and rw.title ~= "", preset .. ": result window shows the headline as its title")
+            rw:close()
+            check(CanastraResultWindow.lastX ~= nil, "result window remembers its position")
+            win:refresh()
+            check(CanastraResultWindow.instance == nil, preset .. ": closed result window stays closed on updates")
+            check(clickHit(win, function(r) return r.fn == CanastraGameWindow.showResult end),
+                preset .. ": result reopened from the table")
+            rw = CanastraResultWindow.instance
+            check(rw and clickHit(rw, function(r) return r.fn == CanastraResultWindow.nextRound end),
+                preset .. ": next round button clicked in the result window")
             g = t.game
             check(g.phase == "draw", preset .. ": next round started")
+            check(CanastraResultWindow.instance == nil, preset .. ": result window closes when the next round starts")
         elseif g.turn == CC.seat then
             local ok, err = humanStep(win, g, CC.seat)
             if not ok then

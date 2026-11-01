@@ -145,6 +145,10 @@ function Base:prerender() end
 function Base:setX(x) if not isNum(x) then fail("setX") end self.x = x end
 function Base:setY(y) if not isNum(y) then fail("setY") end self.y = y end
 function Base:setHeight(h) if not isNum(h) then fail("setHeight") end self.height = h end
+function Base:getX() return self.x end
+function Base:getY() return self.y end
+function Base:getWidth() return self.width end
+function Base:getHeight() return self.height end
 function Base:close() self.visible = false end
 function Base:render() end
 function Base:onMouseDown(x, y) return false end

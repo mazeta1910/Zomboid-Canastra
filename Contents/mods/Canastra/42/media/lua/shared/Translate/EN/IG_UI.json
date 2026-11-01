@@ -261,6 +261,7 @@
     "IGUI_Canastra_MatchWon": "Victory! Your team won the match.",
     "IGUI_Canastra_MatchLost": "Defeat. The other team won.",
     "IGUI_Canastra_RoundWentOutUs": "Your team went out!",
+    "IGUI_Canastra_ShowResult": "Result",
     "IGUI_Canastra_RoundWentOutThem": "The other team went out.",
     "IGUI_Canastra_RoundStockEnded": "The stock ran out.",
     "IGUI_Canastra_NewMatch": "New match",

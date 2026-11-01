@@ -277,4 +277,22 @@ function D.centerOnScreen(win)
     win:setY(math.max(0, (sh - win.height) / 2))
 end
 
+-- A window opened from a click on another window gets covered when the UI manager raises
+-- the clicked one; D.keepRaised (called from prerender) re-raises it until the button is released.
+function D.raiseOverClicked(win)
+    win:bringToTop()
+    win.raiseFrames = 2
+end
+
+function D.keepRaised(win)
+    if not win.raiseFrames then return end
+    win:bringToTop()
+    if isMouseButtonDown and isMouseButtonDown(0) then
+        win.raiseFrames = 2
+    else
+        win.raiseFrames = win.raiseFrames - 1
+        if win.raiseFrames <= 0 then win.raiseFrames = nil end
+    end
+end
+
 return D

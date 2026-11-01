@@ -26,8 +26,7 @@ function W.open(rules, editable, onChange)
     win.onChange = onChange
     win:initialise()
     win:addToUIManager()
-    win:bringToTop()
-    win.raiseFrames = 2
+    D.raiseOverClicked(win)
     D.centerOnScreen(win)
     W.instance = win
     return win
@@ -86,18 +85,8 @@ local function drawRow(self, x, y, label, value, tooltip, onPrev, onNext, arg)
     end
 end
 
--- Opened from a click on another window, which the UI manager raises after the click;
--- keep raising this one until the button is released.
 function W:prerender()
-    if self.raiseFrames then
-        self:bringToTop()
-        if isMouseButtonDown and isMouseButtonDown(0) then
-            self.raiseFrames = 2
-        else
-            self.raiseFrames = self.raiseFrames - 1
-            if self.raiseFrames <= 0 then self.raiseFrames = nil end
-        end
-    end
+    D.keepRaised(self)
     ISCollapsableWindow.prerender(self)
 end
 

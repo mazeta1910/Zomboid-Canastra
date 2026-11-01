@@ -261,6 +261,7 @@
     "IGUI_Canastra_MatchWon": "Vitória! Sua dupla venceu a partida.",
     "IGUI_Canastra_MatchLost": "Derrota. A outra dupla venceu.",
     "IGUI_Canastra_RoundWentOutUs": "Sua dupla bateu!",
+    "IGUI_Canastra_ShowResult": "Resultado",
     "IGUI_Canastra_RoundWentOutThem": "A outra dupla bateu.",
     "IGUI_Canastra_RoundStockEnded": "O monte acabou.",
     "IGUI_Canastra_NewMatch": "Nova partida",
