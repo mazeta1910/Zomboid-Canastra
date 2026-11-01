@@ -389,6 +389,10 @@ function B.nextAction(g, seat)
     if g.phase == "draw" then
         return B.drawAction(g, seat)
     elseif g.phase == "play" then
+        if g.redrawCard and not cardIsUseful(g, seat, g.redrawCard) and not M.isWild(g.redrawCard, g.rules) then
+            local action = { type = "redraw" }
+            if E.check(g, seat, action) then return action end
+        end
         return findExtension(g, seat)
             or findAdd(g, seat, false)
             or findNewMeld(g, seat)

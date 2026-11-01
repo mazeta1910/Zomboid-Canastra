@@ -53,7 +53,7 @@ end
 
 function CC.formatLog(e)
     local who = e.s and CC.seatName(e.s) or ""
-    if e.k == "Discard" then return CC.text("Log_Discard", who, CC.cardName(e.c)) end
+    if e.k == "Discard" or e.k == "Redraw" then return CC.text("Log_" .. e.k, who, CC.cardName(e.c)) end
     if e.k == "RoundStart" then return CC.text("Log_RoundStart", tostring(e.r)) end
     return CC.text("Log_" .. e.k, who, tostring(e.n or ""))
 end
@@ -92,12 +92,13 @@ function CC.onCommand(command, args)
     elseif command == "table" then
         local wasPlaying = CC.info and CC.info.status == "playing"
         CC.info, CC.seat, CC.view = args.info, args.seat, args.view
+        -- Updates refresh open windows in place; open() would raise them over the rules window.
         if CC.info.status == "playing" then
-            CanastraGameWindow.open()
+            if not CanastraGameWindow.instance then CanastraGameWindow.open() end
             if CanastraLobbyWindow.instance then CanastraLobbyWindow.instance:close() end
         else
             if wasPlaying and CanastraGameWindow.instance then CanastraGameWindow.instance:close() end
-            CanastraLobbyWindow.open()
+            if not CanastraLobbyWindow.instance then CanastraLobbyWindow.open() end
         end
         refreshWindows()
     elseif command == "left" then

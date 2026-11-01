@@ -216,6 +216,42 @@ do
     check(M.analyze(cards("3S 4S 5S"), canasta) == nil and M.analyze(cards("3S 4S 5S"), buraco) ~= nil,
         "black three restriction only applies with red-three rules")
 
+    -- The first player may swap the first drawn card once; nobody else can.
+    do
+        local g = scenario("canastra_brasileira", 4)
+        local first = g.turn
+        local ok, err = E.apply(g, first, { type = "redraw" })
+        check(not ok and err == "NoRedraw", "no swap before drawing")
+        E.apply(g, first, { type = "draw" })
+        local drawn = g.redrawCard
+        local handSize, pileSize = #g.hands[first], #g.pile
+        ok, err = E.apply(g, first, { type = "redraw" })
+        check(ok and drawn and g.pile[#g.pile] == drawn and #g.hands[first] >= handSize and #g.pile == pileSize + 1
+            and C.indexOf(g.hands[first], drawn) == nil and g.phase == "play" and g.turn == first,
+            "first player swaps the drawn card and keeps playing: " .. tostring(err))
+        ok, err = E.apply(g, first, { type = "redraw" })
+        check(not ok and err == "NoRedraw", "the swap only happens once")
+        local discard = g.hands[first][1]
+        E.apply(g, first, { type = "discard", card = discard })
+        local second = g.turn
+        E.apply(g, second, { type = "draw" })
+        ok, err = E.apply(g, second, { type = "redraw" })
+        check(second ~= first and not ok and err == "NoRedraw", "the next player cannot swap")
+
+        g = scenario("canastra_brasileira", 4)
+        first = g.turn
+        E.apply(g, first, { type = "draw" })
+        E.apply(g, first, { type = "discard", card = g.hands[first][1] })
+        check(g.redrawCard == nil, "swap expires when the first turn ends")
+        check(scenario("buraco_aberto", 4).redrawOpen == false, "swap disabled outside its rule")
+    end
+
+    -- One shared dead pile in 1x1, one per team in 2x2.
+    local g2 = scenario("canastra_brasileira", 2)
+    check(#g2.dead == 1 and g2.dead[1].owner == 0 and #g2.dead[1].cards == 11, "1x1: a single shared dead pile")
+    local g4 = scenario("canastra_brasileira", 4)
+    check(#g4.dead == 2 and g4.dead[1].owner == 1 and g4.dead[2].owner == 2, "2x2: one dead pile per team")
+
     -- Black threes and wilds on top lock the pile.
     local g = scenario("canastra_brasileira")
     g.turn, g.phase = 1, "draw"

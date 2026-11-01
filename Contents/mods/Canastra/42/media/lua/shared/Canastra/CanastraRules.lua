@@ -16,7 +16,8 @@ R.SCHEMA = {
     { key = "wildRule",          values = { "one", "canasta" } },
     { key = "handSize",          values = { 11, 9, 13, 15, 0 } },
     { key = "drawCount",         values = { 1, 2 } },
-    { key = "deadPiles",         values = { 2, 1, 0 } },
+    { key = "firstRedraw",       values = { false, true } },
+    { key = "deadPiles",         values = { 2, 1, 0, -1 } },
     { key = "deadSize",          values = { 11, 9, 13 } },
     { key = "goOutRequires",     values = { "clean", "any", "none" } },
     { key = "goOutNeedsDiscard", values = { false, true } },
@@ -65,6 +66,7 @@ R.PRESETS = {
     },
     canastra_brasileira = {
         setRanks = "A4K", pileTake = "topMeld", pileLock = true, redThrees = "canasta", goOutRequires = "any",
+        deadPiles = -1, firstRedraw = true,
     },
     custom = {},
 }
@@ -124,6 +126,14 @@ function R.cycle(rules, key, dir)
     if idx < 1 then idx = #opt.values end
     rules[key] = opt.values[idx]
     rules.preset = "custom"
+end
+
+-- -1 means one shared dead pile in 1x1 and one per team in 2x2.
+function R.deadPiles(rules, numPlayers)
+    if rules.deadPiles == -1 then
+        return numPlayers == 2 and 1 or 2
+    end
+    return rules.deadPiles
 end
 
 function R.handSize(rules, numPlayers)

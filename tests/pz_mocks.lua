@@ -139,7 +139,9 @@ function Base:initialise() end
 function Base:addToUIManager() self.inUI = true end
 function Base:removeFromUIManager() self.inUI = false end
 function Base:setVisible(v) self.visible = v end
-function Base:bringToTop() end
+MOCK_Z = 0
+function Base:bringToTop() MOCK_Z = MOCK_Z + 1 self.z = MOCK_Z end
+function Base:prerender() end
 function Base:setX(x) if not isNum(x) then fail("setX") end self.x = x end
 function Base:setY(y) if not isNum(y) then fail("setY") end self.y = y end
 function Base:setHeight(h) if not isNum(h) then fail("setHeight") end self.height = h end

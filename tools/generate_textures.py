@@ -150,7 +150,8 @@ def glyph_mask(ch, font_path, fill=0.86, offset=(0, 0)):
 
 def emblems():
     for name, ch in (("king", "\u265A"), ("queen", "\u265B"), ("jack", "\u265E")):
-        mask = glyph_mask(ch, SYMBOL)
+        # thicken the glyph strokes so the figures survive small sizes
+        mask = glyph_mask(ch, SYMBOL, fill=0.84).filter(ImageFilter.MaxFilter(17))
         for px in EMBLEM_SIZES:
             save(export_mask(mask, px), "emblem_%s_%d.png" % (name, px))
 
@@ -344,12 +345,9 @@ def compose_card(rank, suit, w, mini=False, four=False, font_px=None):
         s = int(w * 0.62)
         card.alpha_composite(joker_image(s), (w - s - pad, h - s - pad))
     elif rank in EMBLEM:
-        fx0, fy0 = int(w * 0.36), int(h * 0.36)
-        fx1, fy1 = w - pad, h - pad
-        d.rectangle((fx0, fy0, fx1, fy1), fill=(248, 238, 210, 255), outline=GOLD + (255,), width=max(1, w // 32))
-        s = int(min(fx1 - fx0, fy1 - fy0) * 0.86)
+        s = int(w * 0.6)
         card.alpha_composite(tinted("emblem_%s_%d.png" % (EMBLEM[rank], pick(EMBLEM_SIZES, s)), s, color),
-                             (fx0 + (fx1 - fx0 - s) // 2, fy0 + (fy1 - fy0 - s) // 2))
+                             (w - s - pad + 1, h - s - pad + 1))
     else:
         s = int(w * (0.62 if rank == 1 else 0.5))
         card.alpha_composite(tinted("suit_%s_%d.png" % (suit, pick(SUIT_SIZES, s)), s, color), (w - s - pad, h - s - pad))

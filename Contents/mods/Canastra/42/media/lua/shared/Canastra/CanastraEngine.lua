@@ -83,10 +83,11 @@ function E.startRound(g)
     local hs = R.handSize(r, g.n)
     for s = 1, g.n do g.hands[s] = take(g.stock, hs) end
     g.dead = {}
-    if r.deadPiles == 2 then
+    local deadPiles = R.deadPiles(r, g.n)
+    if deadPiles == 2 then
         g.dead[1] = { cards = take(g.stock, r.deadSize), owner = 1, state = "open" }
         g.dead[2] = { cards = take(g.stock, r.deadSize), owner = 2, state = "open" }
-    elseif r.deadPiles == 1 then
+    elseif deadPiles == 1 then
         g.dead[1] = { cards = take(g.stock, r.deadSize), owner = 0, state = "open" }
     end
     g.deadTakenBy = { false, false }
@@ -113,6 +114,8 @@ function E.startRound(g)
     g.roundResult = nil
     g.winner = nil
     g.noDiscard = nil
+    g.redrawOpen = r.firstRedraw and r.drawCount == 1 or false
+    g.redrawCard = nil
     g.log = {}
     log(g, { k = "RoundStart", r = g.round })
     E.processRedThrees(g, g.turn)
@@ -330,7 +333,7 @@ local function scoreRound(g, goOutTeam)
         for _, s in ipairs(E.teamSeats(g, team)) do
             t.hand = t.hand - M.points(g.hands[s], rules)
         end
-        if rules.deadPiles == 2 and not g.deadTakenBy[team] then
+        if R.deadPiles(rules, g.n) == 2 and not g.deadTakenBy[team] then
             t.dead = -rules.penaltyNoDead
         end
         local n3 = #g.redThrees[team]
@@ -383,6 +386,8 @@ local function nextTurn(g)
     end
     g.turn = (g.turn % g.n) + 1
     g.phase = "draw"
+    g.redrawOpen = false
+    g.redrawCard = nil
     E.processRedThrees(g, g.turn)
 end
 
@@ -407,6 +412,25 @@ handlers.draw = function(g, seat, action, dry)
     log(g, { k = "Draw", s = seat, n = #cards })
     E.processRedThrees(g, seat)
     g.phase = "play"
+    -- The round's first player may swap the first card drawn once (red-three replacements land last).
+    if g.redrawOpen and #cards == 1 then g.redrawCard = hand[#hand] end
+    g.redrawOpen = false
+    return true
+end
+
+handlers.redraw = function(g, seat, action, dry)
+    if g.phase ~= "play" or not g.redrawCard then return false, "NoRedraw" end
+    local hand = g.hands[seat]
+    local idx = C.indexOf(hand, g.redrawCard)
+    if not idx then return false, "NoRedraw" end
+    if #g.stock == 0 then return false, "NoRedraw" end
+    if dry then return true end
+    local card = table.remove(hand, idx)
+    g.pile[#g.pile + 1] = card
+    g.redrawCard = nil
+    log(g, { k = "Redraw", s = seat, c = card })
+    hand[#hand + 1] = table.remove(g.stock)
+    E.processRedThrees(g, seat)
     return true
 end
 
@@ -520,7 +544,12 @@ function E.apply(g, seat, action, dry)
     if g.turn ~= seat then return false, "NotYourTurn" end
     local h = handlers[action.type]
     if not h then return false, "BadAction" end
-    return h(g, seat, action, dry)
+    local ok, err = h(g, seat, action, dry)
+    if ok and not dry and action.type ~= "draw" and action.type ~= "redraw" then
+        g.redrawOpen = false
+        g.redrawCard = nil
+    end
+    return ok, err
 end
 
 function E.check(g, seat, action)
@@ -575,6 +604,7 @@ function E.view(g, seat)
     if myTeam and g.hasMelded then
         v.initialMin = E.initialMin(g, myTeam)
         v.pileFrozen = E.isPileFrozen(g, myTeam)
+        if g.turn == seat and g.redrawCard then v.redrawCard = g.redrawCard end
         local top = g.pile and g.pile[#g.pile]
         v.pileLocked = (rules.pileLock and top and (M.isWild(top, rules) or C.isBlackThree(top))) or false
         v.canGoOut = E.canGoOut(g, myTeam)

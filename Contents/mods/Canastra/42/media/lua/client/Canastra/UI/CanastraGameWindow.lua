@@ -113,14 +113,19 @@ function W:refresh()
     for _, id in ipairs(fresh) do order[#order + 1] = id end
     if self.sortMode == "rank" then C.sortByRank(order) else C.sortBySuit(order) end
     self.order = order
+    local myTurn = v.turn == v.you and (v.phase == "draw" or v.phase == "play")
+    -- Cards gained this turn stay highlighted until the turn ends.
+    local previous = myTurn and self.fresh or {}
     self.fresh = {}
+    for id in pairs(previous) do
+        if inHand[id] then self.fresh[id] = true end
+    end
     if not firstDeal then
         for _, id in ipairs(fresh) do self.fresh[id] = true end
     end
     for id in pairs(self.selected) do
         if not inHand[id] then self.selected[id] = nil end
     end
-    local myTurn = v.turn == v.you and (v.phase == "draw" or v.phase == "play")
     if not myTurn then
         self.staged = {}
         self.targetMeld = nil
@@ -268,6 +273,11 @@ function W:discardSelected()
     if #sel ~= 1 then return hint("Hint_SelectOneDiscard") end
     self.selected = {}
     CC.action({ type = "discard", card = sel[1] })
+end
+
+function W:redraw()
+    self.selected = {}
+    CC.action({ type = "redraw" })
 end
 
 function W:leave()
@@ -542,12 +552,16 @@ function W:renderActions(y)
         end
         x = x + D.ICON + (mode == "suit" and 4 or 10)
     end
+    if play and v.redrawCard then
+        x = x + D.labelButton(self, x, y, "swap", CC.text("Redraw"), CC.text("RedrawTip", CC.cardName(v.redrawCard)), W.redraw) + 10
+    end
     if #self.staged > 0 then
         local pts = stagedPoints(self, v.rules)
         local label = CC.text("Staged", tostring(#self.staged), tostring(pts), tostring(v.initialMin or 0))
         x = x + D.labelButton(self, x, y, "confirm", label, CC.text("StagedTip"), W.confirmStaged, nil, play) + 10
     end
     local text, isErr = self:statusText()
+    text = D.fitText(text, self.width - PAD - x)
     if isErr then
         self:drawText(text, x, y + (D.ICON - D.FH) / 2, 1, 0.45, 0.4, 1, D.FONT)
     else
@@ -574,8 +588,14 @@ function W:renderHand(y)
     for i, id in ipairs(cards) do
         local x = PAD + (i - 1) * step
         local sel = self.selected[id]
-        local cy = sel and y or baseY
-        D.drawCard(self, id, x, cy, D.HAND_W, D.HAND_H, { selected = sel, highlight = self.fresh and self.fresh[id] })
+        local fresh = self.fresh and self.fresh[id]
+        local cy = baseY
+        if sel then cy = y elseif fresh then cy = baseY - math.floor(raise / 2) end
+        D.drawCard(self, id, x, cy, D.HAND_W, D.HAND_H, { selected = sel, fresh = fresh })
+        if fresh then
+            local barW = i == n and D.HAND_W or math.min(step, D.HAND_W)
+            self:drawRect(x, cy - 4, barW, 3, 1, 0.35, 0.95, 0.35)
+        end
         local hitW = i == n and D.HAND_W or math.min(step, D.HAND_W)
         D.addHit(self, x, cy, hitW, D.HAND_H, function(s, cid) s:toggleCard(cid) end, id, nil)
     end

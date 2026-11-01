@@ -38,8 +38,6 @@ D.SUIT_COLORS4 = {
     [1] = INK, [2] = RED, [3] = { r = 0.07, g = 0.49, b = 0.22 }, [4] = { r = 0.1, g = 0.35, b = 0.78 },
 }
 local JOKER_COLOR = { r = 0.43, g = 0.2, b = 0.63 }
-local FRAME_BG = { r = 0.97, g = 0.93, b = 0.82 }
-local FRAME_GOLD = { r = 0.78, g = 0.63, b = 0.24 }
 
 local cache = {}
 
@@ -54,6 +52,16 @@ end
 
 function D.textW(text, font)
     return TM:MeasureStringX(font or D.FONT, text)
+end
+
+-- Cuts text with "..." so it fits in maxW pixels.
+function D.fitText(text, maxW, font)
+    if D.textW(text, font) <= maxW then return text end
+    local cut = #text
+    while cut > 0 and D.textW(text:sub(1, cut) .. "...", font) > maxW do cut = cut - 1 end
+    -- avoid splitting a multi-byte UTF-8 character
+    while cut > 0 and text:byte(cut + 1) and text:byte(cut + 1) >= 128 and text:byte(cut + 1) < 192 do cut = cut - 1 end
+    return text:sub(1, cut) .. "..."
 end
 
 -- Name of the smallest exported variant that is at least px wide.
@@ -131,26 +139,22 @@ function D.cardBackTex(w)
     return D.tex(sized("card_back", CARD_WIDTHS, w))
 end
 
--- Centre art of a full-size card: big suit, court emblem in a gold frame, or the joker hat.
+-- Centre art of a full-size card: big suit, court figure, or the joker hat.
 local function drawCardArt(ui, id, x, y, w, h, pad, col, tint)
     if C.isJoker(id) then
         local s = math.floor(w * 0.62)
         D.drawSuit(ui, id, x + w - s - pad, y + h - s - pad, s, tint)
     elseif EMBLEMS[C.rank(id)] then
-        local fx, fy = x + math.floor(w * 0.36), y + math.floor(h * 0.36)
-        local fw, fh = x + w - pad - fx, y + h - pad - fy
-        ui:drawRect(fx, fy, fw, fh, 1, FRAME_BG.r * tint, FRAME_BG.g * tint, FRAME_BG.b * tint)
-        ui:drawRectBorder(fx, fy, fw, fh, 1, FRAME_GOLD.r * tint, FRAME_GOLD.g * tint, FRAME_GOLD.b * tint)
-        local s = math.floor(math.min(fw, fh) * 0.86)
+        local s = math.floor(w * 0.6)
         ui:drawTextureScaled(D.tex(sized(EMBLEMS[C.rank(id)], EMBLEM_SIZES, s)),
-            fx + math.floor((fw - s) / 2), fy + math.floor((fh - s) / 2), s, s, 1, col.r * tint, col.g * tint, col.b * tint)
+            x + w - s - pad + 1, y + h - s - pad + 1, s, s, 1, col.r * tint, col.g * tint, col.b * tint)
     else
         local s = math.floor(w * (C.rank(id) == 1 and 0.62 or 0.5))
         D.drawSuit(ui, id, x + w - s - pad, y + h - s - pad, s, tint)
     end
 end
 
--- opts: back, mini, selected, highlight, dim
+-- opts: back, mini, selected, fresh, highlight, dim
 function D.drawCard(ui, id, x, y, w, h, opts)
     opts = opts or {}
     ui:drawRect(x + 1, y + 2, w, h, 0.35, 0, 0, 0)
@@ -175,6 +179,12 @@ function D.drawCard(ui, id, x, y, w, h, opts)
     if opts.selected then
         ui:drawRectBorder(x, y, w, h, 1, 1, 0.8, 0.1)
         ui:drawRectBorder(x + 1, y + 1, w - 2, h - 2, 1, 1, 0.8, 0.1)
+    elseif opts.fresh then
+        ui:drawRectBorder(x - 2, y - 2, w + 4, h + 4, 0.35, 0.35, 0.95, 0.35)
+        ui:drawRectBorder(x - 1, y - 1, w + 2, h + 2, 0.7, 0.35, 0.95, 0.35)
+        for i = 0, 2 do
+            ui:drawRectBorder(x + i, y + i, w - i * 2, h - i * 2, 1, 0.25, 0.85, 0.25)
+        end
     elseif opts.highlight then
         ui:drawRectBorder(x, y, w, h, 1, 0.3, 0.9, 0.3)
         ui:drawRectBorder(x + 1, y + 1, w - 2, h - 2, 1, 0.3, 0.9, 0.3)
