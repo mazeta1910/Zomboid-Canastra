@@ -163,6 +163,9 @@
     "IGUI_Canastra_RuleTip_bonusGoOut": "Points for the team that goes out.",
     "IGUI_Canastra_Rule_penaltyNoDead": "Untaken dead pile",
     "IGUI_Canastra_RuleTip_penaltyNoDead": "Points lost by a team that didn't take its dead pile.",
+    "IGUI_Canastra_Rule_blackThreePenalty": "Black three in hand",
+    "IGUI_Canastra_RuleTip_blackThreePenalty": "Points lost for each black three left in hand at the end of the round (instead of the card's normal value).",
+    "IGUI_Canastra_Val_blackThreePenalty_0": "Normal value",
     "IGUI_Canastra_Rule_targetScore": "Points to win",
     "IGUI_Canastra_RuleTip_targetScore": "The match ends when a team reaches this score.",
 
@@ -252,6 +255,7 @@
     "IGUI_Canastra_Res_Hand": "Cards in hand",
     "IGUI_Canastra_Res_Dead": "Untaken dead pile",
     "IGUI_Canastra_Res_Red3": "Red threes",
+    "IGUI_Canastra_Res_Black3": "Black threes in hand",
     "IGUI_Canastra_Res_Total": "Hand total",
     "IGUI_Canastra_Res_Score": "Score",
     "IGUI_Canastra_MatchWon": "Victory! Your team won the match.",

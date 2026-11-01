@@ -316,7 +316,7 @@ local function scoreRound(g, goOutTeam)
     local rules = g.rules
     local result = { goOutTeam = goOutTeam or 0, teams = {} }
     for team = 1, 2 do
-        local t = { melds = 0, clean = 0, dirty = 0, bonus = 0, goOut = 0, hand = 0, dead = 0, red3 = 0 }
+        local t = { melds = 0, clean = 0, dirty = 0, bonus = 0, goOut = 0, hand = 0, dead = 0, red3 = 0, black3 = 0 }
         for _, m in ipairs(g.melds[team]) do
             t.melds = t.melds + M.points(m.cards, rules)
             if M.isCanasta(m) then
@@ -330,8 +330,17 @@ local function scoreRound(g, goOutTeam)
             end
         end
         if goOutTeam == team then t.goOut = rules.bonusGoOut end
+        local penalty = rules.blackThreePenalty or 0
         for _, s in ipairs(E.teamSeats(g, team)) do
-            t.hand = t.hand - M.points(g.hands[s], rules)
+            local rest = {}
+            for _, id in ipairs(g.hands[s]) do
+                if penalty > 0 and C.isBlackThree(id) then
+                    t.black3 = t.black3 - penalty
+                else
+                    rest[#rest + 1] = id
+                end
+            end
+            t.hand = t.hand - M.points(rest, rules)
         end
         if R.deadPiles(rules, g.n) == 2 and not g.deadTakenBy[team] then
             t.dead = -rules.penaltyNoDead
@@ -346,7 +355,7 @@ local function scoreRound(g, goOutTeam)
                 if #g.melds[team] == 0 then t.red3 = -t.red3 end
             end
         end
-        t.total = t.melds + t.bonus + t.goOut + t.hand + t.dead + t.red3
+        t.total = t.melds + t.bonus + t.goOut + t.hand + t.dead + t.red3 + t.black3
         result.teams[team] = t
     end
     return result

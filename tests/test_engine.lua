@@ -283,10 +283,24 @@ do
     g.hasMelded = { true, false }
     g.hands[1] = cards("KD")
     g.redThrees = { cards("3H 3D"), cards("3H/2") }
+    local s2 = E.teamSeats(g, 2)[1]
+    g.hands[s2] = cards("3S 3C/2 7H")
     ok, err = E.apply(g, 1, { type = "discard", card = c("KD") })
     check(ok and g.roundResult and g.roundResult.goOutTeam == 1, "go out with a dirty canasta: " .. tostring(err))
     check(g.roundResult.teams[1].red3 == 200, "red threes count 100 each with a canasta")
     check(g.roundResult.teams[2].red3 == -100, "red threes negative without a canasta")
+    local t2 = g.roundResult.teams[2]
+    check(t2.black3 == -200, "each black three left in hand costs 100: " .. tostring(t2.black3))
+    local others = 0
+    for _, s in ipairs(E.teamSeats(g, 2)) do
+        if s ~= s2 then others = others + M.points(g.hands[s], br) end
+    end
+    check(t2.hand == -(M.points(cards("7H"), br) + others), "black threes are not also counted at card value")
+    local b1 = 0
+    for _, s in ipairs(E.teamSeats(g, 1)) do
+        for _, id in ipairs(g.hands[s]) do if C.isBlackThree(id) then b1 = b1 - 100 end end
+    end
+    check(g.roundResult.teams[1].black3 == b1, "black-three penalty matches the black threes left in hand")
 end
 
 do

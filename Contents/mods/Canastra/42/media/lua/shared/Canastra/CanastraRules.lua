@@ -31,6 +31,7 @@ R.SCHEMA = {
     { key = "bonusDirty",        values = { 100, 50, 200, 300 } },
     { key = "bonusGoOut",        values = { 100, 0, 50, 200 } },
     { key = "penaltyNoDead",     values = { 100, 0, 50, 200 } },
+    { key = "blackThreePenalty", values = { 0, 100, 50, 200 } },
     { key = "targetScore",       values = { 3000, 1000, 1500, 2000, 5000 } },
 }
 
@@ -66,7 +67,7 @@ R.PRESETS = {
     },
     canastra_brasileira = {
         setRanks = "A4K", pileTake = "topMeld", pileLock = true, redThrees = "canasta", goOutRequires = "any",
-        deadPiles = -1, firstRedraw = true,
+        deadPiles = -1, firstRedraw = true, blackThreePenalty = 100,
     },
     custom = {},
 }

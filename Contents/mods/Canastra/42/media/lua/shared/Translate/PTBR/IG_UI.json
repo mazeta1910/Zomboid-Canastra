@@ -163,6 +163,9 @@
     "IGUI_Canastra_RuleTip_bonusGoOut": "Pontos para a dupla que bate.",
     "IGUI_Canastra_Rule_penaltyNoDead": "Morto não pego",
     "IGUI_Canastra_RuleTip_penaltyNoDead": "Pontos perdidos pela dupla que não pegou o seu morto.",
+    "IGUI_Canastra_Rule_blackThreePenalty": "3 preto na mão",
+    "IGUI_Canastra_RuleTip_blackThreePenalty": "Pontos perdidos por cada 3 preto que sobrar na mão no fim da rodada (no lugar do valor normal da carta).",
+    "IGUI_Canastra_Val_blackThreePenalty_0": "Valor normal",
     "IGUI_Canastra_Rule_targetScore": "Pontos para vencer",
     "IGUI_Canastra_RuleTip_targetScore": "A partida termina quando uma dupla atinge esta pontuação.",
 
@@ -252,6 +255,7 @@
     "IGUI_Canastra_Res_Hand": "Cartas na mão",
     "IGUI_Canastra_Res_Dead": "Morto não pego",
     "IGUI_Canastra_Res_Red3": "3 vermelhos",
+    "IGUI_Canastra_Res_Black3": "3 pretos na mão",
     "IGUI_Canastra_Res_Total": "Total da mão",
     "IGUI_Canastra_Res_Score": "Placar",
     "IGUI_Canastra_MatchWon": "Vitória! Sua dupla venceu a partida.",

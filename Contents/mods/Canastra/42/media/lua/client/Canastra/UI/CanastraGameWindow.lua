@@ -329,22 +329,8 @@ function W:drawMeldArea(team, x, y, width, rows, label, isOurs)
     local col = isOurs and D.COLOR_US or D.COLOR_THEM
     self:drawText(label, x, y, col.r, col.g, col.b, 0.8, D.FONT)
     local r3 = v.rules.redThrees and v.red3[team] or {}
-    if #r3 > 0 then
-        local s = D.FH - 2
-        local tw = D.textW("3")
-        local r3Label = CC.text("Res_Red3") .. ":"
-        local lw = D.textW(r3Label)
-        local rw = lw + 4 + #r3 * (tw + s + 4)
-        local rx = x + width - rw
-        self:drawText(r3Label, rx, y, 0.8, 0.8, 0.8, 0.9, D.FONT)
-        rx = rx + lw + 4
-        for _, id in ipairs(r3) do
-            self:drawText("3", rx, y, 0.95, 0.35, 0.35, 1, D.FONT)
-            D.drawSuit(self, id, rx + tw + 1, y + 1, s)
-            rx = rx + tw + s + 4
-        end
-        D.addHit(self, x + width - rw, y, rw, D.FH, nil, nil, getText("IGUI_Canastra_RuleTip_redThrees"))
-    end
+    local r3W = #r3 > 0 and D.MINI_W + 8 or 0
+    local headerY = y
     y = y + D.FH
     local areaH = rows * (D.MINI_H + 6)
     self:drawRect(x, y, width, areaH, 0.18, 0, 0, 0)
@@ -352,7 +338,22 @@ function W:drawMeldArea(team, x, y, width, rows, label, isOurs)
     if canAct and v.phase == "play" then
         D.addHit(self, x, y, width, areaH, W.newMeld, nil, CC.text("NewMeldTip"))
     end
-    local placed = layoutMelds(v.melds[team] or {}, x + 4, y + 3, width - 8, rows)
+    if #r3 > 0 then
+        -- Stacked from the header line down so each card's corner index stays visible.
+        local cx = x + width - D.MINI_W - 4
+        local top = headerY + 1
+        local step = 0
+        if #r3 > 1 then
+            local fit = math.floor((y + areaH - 3 - top - D.MINI_H) / (#r3 - 1))
+            step = math.min(D.FH + math.floor(D.MINI_W * 0.42), fit)
+        end
+        for i, id in ipairs(r3) do
+            D.drawCard(self, id, cx, top + (i - 1) * step, D.MINI_W, D.MINI_H, { mini = true })
+        end
+        D.addHit(self, cx, top, D.MINI_W, (#r3 - 1) * step + D.MINI_H, nil, nil,
+            CC.text("Res_Red3") .. " (" .. #r3 .. ")")
+    end
+    local placed = layoutMelds(v.melds[team] or {}, x + 4, y + 3, width - 8 - r3W, rows)
     for _, p in ipairs(placed) do
         local m = p.meld
         local target = isOurs and self.targetMeld == m.id
@@ -612,6 +613,7 @@ function W:renderResult()
         { "Res_Hand", "hand" }, { "Res_Dead", "dead" },
     }
     if v.rules.redThrees then rows[#rows + 1] = { "Res_Red3", "red3" } end
+    if (v.rules.blackThreePenalty or 0) > 0 then rows[#rows + 1] = { "Res_Black3", "black3" } end
     rows[#rows + 1] = { "Res_Total", "total" }
     local lineH = D.FH + 2
     local w = math.floor(360 * D.S)
