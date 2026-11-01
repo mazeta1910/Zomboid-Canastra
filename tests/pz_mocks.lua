@@ -7,7 +7,7 @@ local function fail(msg)
     if #MOCK_ERRORS < 50 then MOCK_ERRORS[#MOCK_ERRORS + 1] = msg .. "\n" .. debug.traceback("", 2) end
 end
 
-for _, m in ipairs({ "ISUI/ISCollapsableWindow", "ISUI/ISButton", "ISUI/ISPanel" }) do
+for _, m in ipairs({ "ISUI/ISCollapsableWindow", "ISUI/ISButton", "ISUI/ISPanel", "ISUI/ISUI3DModel" }) do
     MOCK_MODULES[m] = true
 end
 
@@ -23,7 +23,7 @@ UIFont = { Small = "Small", Medium = "Medium", Large = "Large" }
 CharacterStat = { BOREDOM = "BOREDOM", UNHAPPINESS = "UNHAPPINESS", STRESS = "STRESS" }
 SandboxVars = {
     Canastra = {
-        RequiredDecks = 2, MaxDistance = 8, AllowBots = true, BotDelay = 1.0,
+        RequiredDecks = 2, MaxDistance = 8, RequireSeat = true, SeatReturnTime = 120, AllowBots = true, BotDelay = 1.0,
         BoredomPerMinute = 0.3, UnhappinessPerMinute = 0.1, StressPerMinute = 0.002, WinUnhappinessBonus = 10,
     },
 }
@@ -115,6 +115,61 @@ MOCK_PLAYER = {
 }
 function getPlayer() return MOCK_PLAYER end
 function getSpecificPlayer(i) return i == 0 and MOCK_PLAYER or nil end
+
+-- ------------------------------------------------------------------ world: chairs and tables
+-- MOCK_GRID["x,y,z"] = list of sprite names on that square.
+MOCK_GRID = {}
+local function mockList(items)
+    return { size = function() return #items end, get = function(_, i) return items[i + 1] end }
+end
+local function mockSquare(x, y, z)
+    local names = MOCK_GRID[x .. "," .. y .. "," .. z]
+    if not names then return nil end
+    local objects = {}
+    local sq = { getX = function() return x end, getY = function() return y end, getZ = function() return z end }
+    for _, name in ipairs(names) do
+        local props = {
+            has = function(_, k) return k == "IsTable" and name:find("table", 1, true) ~= nil end,
+            get = function() return nil end,
+        }
+        local sprite = { getName = function() return name end, getProperties = function() return props end }
+        objects[#objects + 1] = { getSprite = function() return sprite end, getSquare = function() return sq end }
+    end
+    sq.getObjects = function() return mockList(objects) end
+    return sq
+end
+function getCell()
+    return { getGridSquare = function(_, x, y, z) return mockSquare(x, y, z) end }
+end
+function mockPlaceTable(x, y, z, w, h)
+    for dx = 0, (w or 1) - 1 do
+        for dy = 0, (h or 1) - 1 do
+            MOCK_GRID[(x + dx) .. "," .. (y + dy) .. "," .. z] = { "furniture_tables_high_01_0" }
+        end
+    end
+end
+-- Puts a character on a chair at (x, y, z); nil x makes them stand up.
+function mockSit(player, x, y, z)
+    if not x then
+        player.chairAt = nil
+        return
+    end
+    MOCK_GRID[x .. "," .. y .. "," .. z] = { "furniture_seating_indoor_01_0" }
+    player.chairAt = { x, y, z }
+end
+local function sitMethods(player)
+    player.isSittingOnFurniture = function(self) return self.chairAt ~= nil end
+    player.getSitOnFurnitureObject = function(self)
+        local c = self.chairAt
+        if not c then return nil end
+        local sq = mockSquare(c[1], c[2], c[3])
+        return sq and sq:getObjects():get(0)
+    end
+end
+MOCK_SIT_METHODS = sitMethods
+sitMethods(MOCK_PLAYER)
+mockPlaceTable(100, 199, 0, 2, 1)
+mockSit(MOCK_PLAYER, 100, 200, 0)
 function getNumActivePlayers() return 1 end
 
 -- ------------------------------------------------------------------ UI base class
@@ -145,6 +200,12 @@ function Base:prerender() end
 function Base:setX(x) if not isNum(x) then fail("setX") end self.x = x end
 function Base:setY(y) if not isNum(y) then fail("setY") end self.y = y end
 function Base:setHeight(h) if not isNum(h) then fail("setHeight") end self.height = h end
+function Base:setWidth(w) if not isNum(w) then fail("setWidth") end self.width = w end
+function Base:addChild(child)
+    self.children = self.children or {}
+    self.children[#self.children + 1] = child
+    child.parent = self
+end
 function Base:getX() return self.x end
 function Base:getY() return self.y end
 function Base:getWidth() return self.width end
@@ -207,6 +268,55 @@ end
 ISCollapsableWindow = Base:derive("ISCollapsableWindow")
 function ISCollapsableWindow.TitleBarHeight() return 20 end
 ISCollapsableWindow.new = Base.new
+
+IsoDirections = { N = "N", S = "S", E = "E", W = "W" }
+function getPlayerFromUsername(name) return nil end
+ISUI3DModel = Base:derive("ISUI3DModel")
+function ISUI3DModel:new(x, y, w, h)
+    local o = Base.new(self, x, y, w, h)
+    o.javaObject = { setConsumeMouseEvents = function(_, v) o.consumesMouse = v end }
+    return o
+end
+-- cfg.order lists the calls, so tests can check the anim set is chosen before the character
+local function record(self, field)
+    self.cfg = self.cfg or { order = {} }
+    self.cfg.order[#self.cfg.order + 1] = field
+end
+local function setter(field)
+    return function(self, value) record(self, field) self.cfg[field] = value end
+end
+for _, f in ipairs({ "setAnimSetName", "setState", "setIsometric", "setDoRandomExtAnimations", "setDirection",
+    "setZoom", "setYOffset", "setXOffset", "setCharacter" }) do
+    ISUI3DModel[f] = setter(f)
+end
+-- In game a bare setOutfitName leaves the model without a body and the renderer throws every frame.
+function ISUI3DModel:setOutfitName(name, female, zombie)
+    fail("setOutfitName crashes the UI3DModel renderer; use setSurvivorDesc")
+end
+function ISUI3DModel:setSurvivorDesc(desc)
+    if type(desc) ~= "table" or not desc.outfit then fail("setSurvivorDesc needs a dressed SurvivorDesc") end
+    record(self, "setSurvivorDesc")
+    self.cfg.outfit = desc and desc.outfit
+end
+SurvivorType = { Neutral = "Neutral" }
+SurvivorFactory = {
+    CreateSurvivor = function(kind, female)
+        if kind ~= SurvivorType.Neutral or type(female) ~= "boolean" then fail("CreateSurvivor args") end
+        return { female = female, dressInNamedOutfit = function(self, name)
+            if type(name) ~= "string" then fail("dressInNamedOutfit name") end
+            self.outfit = name
+        end }
+    end,
+}
+function ISUI3DModel:reportEvent(event)
+    if type(event) ~= "string" then fail("reportEvent name") end
+    record(self, "reportEvent")
+    self.cfg["event_" .. event] = true
+end
+function ISUI3DModel:setVariable(key, value)
+    record(self, "setVariable")
+    self.cfg["var_" .. key] = value
+end
 
 -- ------------------------------------------------------------------ context menu
 ISInventoryPaneContextMenu = { addToolTip = function() return {} end }

@@ -54,13 +54,13 @@ end
 -- ------------------------------------------------------------------ actions
 
 function W:join(t)
-    CC.send("join", { id = t.id })
+    CC.send("join", { id = t.id, seat = CC.seatArgs() })
 end
 
 function W:create()
     CC.send("create", {
         n = W.pending.n, rules = W.pending.rules, fillBots = W.pending.fillBots,
-        decks = N.countDecks(getPlayer()),
+        decks = N.countDecks(getPlayer()), seat = CC.seatArgs(),
     })
 end
 
@@ -113,7 +113,9 @@ function W:renderBrowse(y)
         local line = string.format("%s  %s  %d/%d  %s", t.hostName, modeLabel(t.n), t.filled, t.n, CC.presetName(t.preset))
         self:drawText(line, PAD + 4, y + (ROW_H - D.FH) / 2, 1, 1, 1, 1, D.FONT)
         self:drawTextRight(status, self.width - PAD - D.ICON - 8, y + (ROW_H - D.FH) / 2, 0.7, 0.7, 0.7, 1, D.FONT)
-        D.iconButton(self, self.width - PAD - D.ICON, y + 2, "sit", CC.text("Join"), W.join, t, t.open)
+        local blocker = t.open and CC.joinBlocker(t)
+        local tip = blocker and CC.text("Err_" .. blocker) or CC.text("Join")
+        D.iconButton(self, self.width - PAD - D.ICON, y + 2, "sit", tip, W.join, t, t.open and not blocker)
         y = y + ROW_H
     end
     D.iconButton(self, self.width - PAD - D.ICON, y + 2, "refresh", CC.text("Refresh"), function() CC.send("list") end)
@@ -161,14 +163,28 @@ function W:renderBrowse(y)
     local have = N.countDecks(getPlayer())
     local enough = have >= need
     local decks = CC.text("Decks", tostring(have), tostring(need))
+    local ty = y + (D.ICON - D.FH) / 2
     if enough then
-        self:drawText(decks, PAD, y + (D.ICON - D.FH) / 2, 0.6, 0.9, 0.6, 1, D.FONT)
+        self:drawText(decks, PAD, ty, 0.6, 0.9, 0.6, 1, D.FONT)
     else
-        self:drawText(decks, PAD, y + (D.ICON - D.FH) / 2, 0.95, 0.5, 0.45, 1, D.FONT)
+        self:drawText(decks, PAD, ty, 0.95, 0.5, 0.45, 1, D.FONT)
     end
+    local seatErr
+    if Canastra.Seating.required() then
+        local seat, reason = CC.mySeat()
+        seatErr = not seat and reason or nil
+        local sx = PAD + D.textW(decks) + 12
+        local text = CC.text(seat and "SeatOk" or ("Seat_" .. reason))
+        local icon = D.FH
+        self:drawTextureScaled(D.tex("icon_sit"), sx, ty, icon, icon, 1, seat and 0.6 or 0.95, seat and 0.9 or 0.5, seat and 0.6 or 0.45)
+        D.addHit(self, sx, ty, icon, icon, nil, nil, CC.text("SeatTip"))
+        self:drawText(text, sx + icon + 3, ty, seat and 0.6 or 0.95, seat and 0.9 or 0.5, seat and 0.6 or 0.45, 1, D.FONT)
+    end
+    local ok = enough and not seatErr
+    local tip = not enough and CC.text("Err_NeedDecks") or (seatErr and CC.text("Err_" .. seatErr)) or ""
     local label = CC.text("Create")
     local bw = D.ICON + D.textW(label) + 6
-    D.labelButton(self, self.width - PAD - bw, y, "meld", label, enough and "" or CC.text("Err_NeedDecks"), W.create, nil, enough)
+    D.labelButton(self, self.width - PAD - bw, y, "meld", label, tip, W.create, nil, ok)
     return y + D.ICON + 6
 end
 

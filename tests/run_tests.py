@@ -42,6 +42,16 @@ def check_syntax():
     return errors
 
 
+def no_duplicates(pairs):
+    # The game's JSON parser refuses duplicate keys and then fails to start.
+    out = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError("duplicate key %s" % k)
+        out[k] = v
+    return out
+
+
 def load_translations():
     errors = 0
     langs = {}
@@ -52,7 +62,7 @@ def load_translations():
             prefix = {"IG_UI": "IGUI_", "ContextMenu": "ContextMenu_", "Sandbox": "Sandbox_", "Tooltip": "Tooltip_"}.get(
                 os.path.splitext(os.path.basename(path))[0], "")
             try:
-                data = json.loads(read(path))
+                data = json.loads(read(path), object_pairs_hook=no_duplicates)
             except ValueError as e:
                 print("JSON:", path, e)
                 errors += 1

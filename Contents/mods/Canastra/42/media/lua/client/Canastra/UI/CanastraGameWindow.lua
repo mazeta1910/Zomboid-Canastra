@@ -3,6 +3,7 @@ require "Canastra/CanastraClient"
 require "Canastra/UI/CanastraDraw"
 require "Canastra/UI/CanastraRulesWindow"
 require "Canastra/UI/CanastraResultWindow"
+require "Canastra/UI/CanastraTableScene"
 
 CanastraGameWindow = ISCollapsableWindow:derive("CanastraGameWindow")
 local W = CanastraGameWindow
@@ -10,6 +11,8 @@ local D = CanastraDraw
 local C = Canastra.Cards
 local M = Canastra.Melds
 local CC = CanastraClient
+local Scene = CanastraTableScene
+local Avatars = CanastraAvatars
 
 local PAD = 8
 local GAP = 8
@@ -39,10 +42,9 @@ function W.computeHeight()
     local th = ISCollapsableWindow.TitleBarHeight()
     local meldRow = D.MINI_H + 6
     return th + PAD
-        + D.FH + 6                     -- score strip
-        + D.FH + 8                     -- players strip
+        + W.portraitSize() + 6         -- score strip
         + D.FH + THEM_ROWS * meldRow   -- their melds
-        + D.HAND_H + D.FH + 10         -- table centre
+        + Scene.height() + 10          -- table scene
         + D.FH + US_ROWS * meldRow     -- our melds
         + D.ICON + 8                   -- status + actions
         + D.HAND_H + 14 + PAD          -- hand
@@ -116,6 +118,7 @@ function W:clearSelection()
     self.selected = {}
     self.staged = {}
     self.targetMeld = nil
+    self.pileArmed = nil
 end
 
 function W:refresh()
@@ -156,6 +159,7 @@ function W:refresh()
         self.targetMeld = nil
     end
     if v.phase ~= "draw" then self.targetMeld = nil end
+    if not myTurn or v.phase ~= "draw" or #(v.pile or {}) == 0 then self.pileArmed = nil end
     for i = #self.staged, 1, -1 do
         for _, id in ipairs(self.staged[i]) do
             if not inHand[id] then
@@ -200,6 +204,26 @@ function W:toggleCard(id)
     end
     self.lastClick.id, self.lastClick.t = id, now
     self.selected[id] = not self.selected[id] or nil
+    if self.pileArmed then self:tryArmedTake() end
+end
+
+-- After clicking the pile first: takes it as soon as the selected hand cards form a meld with its top.
+function W:tryArmedTake()
+    local v = CC.view
+    local top = v and v.pile and v.pile[#v.pile]
+    if not (isMyTurn(v) and v.phase == "draw" and top) then
+        self.pileArmed = nil
+        return
+    end
+    local sel = self:selectedList()
+    if #sel < 2 then return end
+    local cards = { top }
+    for _, id in ipairs(sel) do cards[#cards + 1] = id end
+    if not M.analyze(cards, v.rules) then return end
+    local melds = { { cards = sel } }
+    for _, m in ipairs(self.staged) do melds[#melds + 1] = { cards = m } end
+    self:clearSelection()
+    CC.action({ type = "takePile", melds = melds })
 end
 
 function W:clickStock()
@@ -235,7 +259,11 @@ function W:clickPile()
         for _, m in ipairs(self.staged) do melds[#melds + 1] = { cards = m } end
         CC.action({ type = "takePile", melds = melds })
     else
-        return hint("Hint_PileNeedsMeld")
+        local top = v.pile and v.pile[#v.pile]
+        if not top then return hint("Hint_PileNeedsMeld") end
+        self.pileArmed = not self.pileArmed or nil
+        if self.pileArmed then hint("Hint_PileArmed", CC.cardName(top)) end
+        return
     end
     self:clearSelection()
 end
@@ -245,6 +273,12 @@ function W:clickOwnMeld(meldId)
     if not isMyTurn(v) then return end
     if v.phase == "draw" then
         if v.rules.pileTake ~= "free" or v.rules.pileFreeze then
+            if self.pileArmed then
+                local sel = self:selectedList()
+                self:clearSelection()
+                CC.action({ type = "takePile", addTo = meldId, cards = sel })
+                return
+            end
             self.targetMeld = self.targetMeld ~= meldId and meldId or nil
         end
         return
@@ -400,75 +434,86 @@ function W:drawMeldArea(team, x, y, width, rows, label, isOurs)
     return y + areaH
 end
 
-local function badge(self, x, y, seat)
-    local v = CC.view
-    local team = v.teamOf[seat]
-    local col = team == myTeam(v) and D.COLOR_US or D.COLOR_THEM
-    local name = CC.seatName(seat)
-    local isBot = CC.info.seats[seat] and CC.info.seats[seat].kind == "bot"
-    local text = name .. "  " .. tostring(v.counts[seat] or 0)
-    local w = D.textW(text) + D.FH + 14 + (isBot and D.FH + 2 or 0)
-    local h = D.FH + 4
-    local turn = v.turn == seat and (v.phase == "draw" or v.phase == "play")
-    self:drawRect(x, y, w, h, turn and 0.85 or 0.4, turn and 0.45 or 0, turn and 0.38 or 0, turn and 0.05 or 0)
-    self:drawRectBorder(x, y, w, h, turn and 1 or 0.3, 1, turn and 0.85 or 1, turn and 0.3 or 1)
-    local tx = x + 4
-    if isBot then
-        self:drawTextureScaled(D.tex("icon_bot"), tx, y + 2, D.FH, D.FH, 0.9, 1, 1, 1)
-        tx = tx + D.FH + 2
-    end
-    self:drawText(name, tx, y + 2, col.r, col.g, col.b, 1, D.FONT)
-    tx = tx + D.textW(name) + 6
-    self:drawTextureScaled(D.cardBackTex(D.FH), tx, y + 2, math.floor(D.FH * 0.7), D.FH, 1, 1, 1, 1)
-    self:drawText(tostring(v.counts[seat] or 0), tx + math.floor(D.FH * 0.7) + 3, y + 2, 1, 1, 1, 1, D.FONT)
-    return w
+-- ------------------------------------------------------------------ render sections
+
+function W.portraitSize()
+    return D.FH + 10
 end
 
--- ------------------------------------------------------------------ render sections
+-- Face portraits of a team's seats (the viewer first). Returns the width used.
+function W:drawPortraits(team, x, y)
+    local v = CC.view
+    local p = W.portraitSize()
+    local seats = {}
+    if v.teamOf[v.you] == team then seats[1] = v.you end
+    for s = 1, v.n do
+        if v.teamOf[s] == team and s ~= v.you then seats[#seats + 1] = s end
+    end
+    local col = team == myTeam(v) and D.COLOR_US or D.COLOR_THEM
+    local step = p + 3
+    for i, seat in ipairs(seats) do
+        local px = x + (i - 1) * step
+        local turn = v.turn == seat and (v.phase == "draw" or v.phase == "play")
+        local c = turn and D.COLOR_GOLD or col
+        self:drawRect(px - 1, y - 1, p + 2, p + 2, 1, c.r, c.g, c.b)
+        self:drawRect(px, y, p, p, 1, 0.1, 0.12, 0.1)
+        local r = { x = px, y = y, w = p, h = p }
+        if not Avatars.place(self, "portrait_" .. seat, CC.info.seats[seat] or {}, r, Avatars.PORTRAIT) then
+            Avatars.drawSilhouette(self, r, CC.seatName(seat))
+        end
+        D.addHit(self, px, y, p, p, nil, nil, CC.seatName(seat))
+    end
+    return #seats > 0 and (#seats - 1) * step + p or 0
+end
 
 function W:renderScores(y)
     local v = CC.view
     local us, them = myTeam(v), myTeam(v) == 1 and 2 or 1
+    local p = W.portraitSize()
+    local ty = y + math.floor((p - D.FH) / 2)
     local x = PAD
+    x = x + self:drawPortraits(us, x, y) + 5
     local text = CC.text("Us") .. " " .. tostring(v.scores[us])
-    self:drawText(text, x, y, D.COLOR_US.r, D.COLOR_US.g, D.COLOR_US.b, 1, D.FONT)
-    x = x + D.textW(text) + 14
+    self:drawText(text, x, ty, D.COLOR_US.r, D.COLOR_US.g, D.COLOR_US.b, 1, D.FONT)
+    x = x + D.textW(text) + 16
+    x = x + self:drawPortraits(them, x, y) + 5
     text = CC.text("Them") .. " " .. tostring(v.scores[them])
-    self:drawText(text, x, y, D.COLOR_THEM.r, D.COLOR_THEM.g, D.COLOR_THEM.b, 1, D.FONT)
-    x = x + D.textW(text) + 14
-    text = CC.text("ScoreInfo", tostring(v.rules.targetScore), tostring(v.round), CC.presetName(v.rules.preset))
-    self:drawText(text, x, y, 0.75, 0.75, 0.75, 1, D.FONT)
-
+    self:drawText(text, x, ty, D.COLOR_THEM.r, D.COLOR_THEM.g, D.COLOR_THEM.b, 1, D.FONT)
+    x = x + D.textW(text) + 16
     local bx = self.width - PAD - D.ICON
-    D.iconButton(self, bx, y - 2, "leave", CC.text("LeaveTip"), W.leave)
+    text = CC.text("ScoreInfo", tostring(v.rules.targetScore), tostring(v.round), CC.presetName(v.rules.preset))
+    text = D.fitText(text, bx - (D.ICON + 4) * 2 - 8 - x)
+    self:drawText(text, x, ty, 0.75, 0.75, 0.75, 1, D.FONT)
+
+    local iy = y + math.floor((p - D.ICON) / 2)
+    D.iconButton(self, bx, iy, "leave", CC.text("LeaveTip"), W.leave)
     bx = bx - D.ICON - 4
-    D.iconButton(self, bx, y - 2, "rules", CC.text("ViewRules"), function()
+    D.iconButton(self, bx, iy, "rules", CC.text("ViewRules"), function()
         CanastraRulesWindow.open(Canastra.Rules.sanitize(v.rules), false, nil)
     end)
     bx = bx - D.ICON - 4
     D.loadSettings()
-    D.iconButton(self, bx, y - 2, "colors", CC.text(D.fourColor and "FourColorOn" or "FourColorOff"), function()
+    D.iconButton(self, bx, iy, "colors", CC.text(D.fourColor and "FourColorOn" or "FourColorOff"), function()
         D.setFourColor(not D.fourColor)
     end)
     if D.fourColor then
-        self:drawRectBorder(bx, y - 2, D.ICON, D.ICON, 1, D.COLOR_GOLD.r, D.COLOR_GOLD.g, D.COLOR_GOLD.b)
+        self:drawRectBorder(bx, iy, D.ICON, D.ICON, 1, D.COLOR_GOLD.r, D.COLOR_GOLD.g, D.COLOR_GOLD.b)
     end
-    return y + D.FH + 6
+    return y + p + 6
 end
 
-function W:renderPlayers(y)
-    local v = CC.view
-    local x = PAD
-    for k = 1, v.n do
-        local seat = ((v.you - 1 + k) % v.n) + 1
-        x = x + badge(self, x, y, seat) + 6
-    end
-    return y + D.FH + 8
-end
-
+-- The table scene is split around the 3D models: chairs and models here (prerender), the table and
+-- everything on it in renderCentreFront (render), so the table hides the seated players' legs.
 function W:renderCentre(y)
+    local g = Scene.renderBack(self, CC.view, PAD, y, self.width - PAD * 2)
+    self.centreLayout = g
+    return g.y + g.h + 10
+end
+
+function W:renderCentreFront(g)
     local v = CC.view
-    local x = PAD
+    Scene.renderFront(self, v, g)
+    local x, y = g.cardX, g.cardY
     local h = D.HAND_H
     local myT = isMyTurn(v)
 
@@ -480,9 +525,9 @@ function W:renderCentre(y)
     else
         self:drawRectBorder(x, y, D.HAND_W, h, 0.4, 1, 1, 1)
     end
-    self:drawTextCentre(CC.text("Stock", tostring(v.stock)), x + D.HAND_W / 2, y + h + 1, 0.8, 0.8, 0.8, 1, D.FONT)
+    self:drawText(CC.text("Stock", tostring(v.stock)), x, y + h + 1, 0.8, 0.8, 0.8, 1, D.FONT)
     D.addHit(self, x, y, D.HAND_W, h, W.clickStock, nil, CC.text("StockTip"))
-    x = x + D.HAND_W + GAP * 2
+    x = g.pileX
 
     -- discard pile: fanned when visible, otherwise only the top card
     local pile = v.pile or {}
@@ -495,7 +540,8 @@ function W:renderCentre(y)
         pileW = D.HAND_W
     else
         for i = first, #pile do
-            D.drawCard(self, pile[i], x + (i - first) * step, y, D.HAND_W, h, { mini = i < #pile })
+            D.drawCard(self, pile[i], x + (i - first) * step, y, D.HAND_W, h,
+                { mini = i < #pile, selected = i == #pile and self.pileArmed })
         end
     end
     if v.pileLocked then
@@ -511,10 +557,9 @@ function W:renderCentre(y)
     self:drawText(pileLabel, x, y + h + 1, 0.8, 0.8, 0.8, 1, D.FONT)
     local tip = v.phase == "play" and CC.text("PileDiscardTip") or CC.text("PileTakeTip_" .. v.rules.pileTake)
     D.addHit(self, x, y, pileW, h, W.clickPile, nil, tip)
-    x = x + math.max(pileW, D.textW(pileLabel)) + GAP * 2
 
     -- dead piles
-    local dx = x
+    local dx = g.deadX
     for i, d in ipairs(v.dead or {}) do
         local label
         if d.owner == 0 then label = CC.text("DeadShared")
@@ -530,21 +575,20 @@ function W:renderCentre(y)
         self:drawText(label, dx + D.FH * 1.3 + 4, cy, 0.9, 0.9, 0.9, 1, D.FONT)
         self:drawText(state, dx + D.FH * 1.3 + 4, cy + D.FH, 0.65, 0.65, 0.65, 1, D.FONT)
     end
-    x = dx + math.floor(150 * D.S)
 
     -- action log
-    local logW = self.width - PAD - x
-    self:drawRect(x, y, logW, h + D.FH, 0.25, 0, 0, 0)
-    local lines = math.floor((h + D.FH - 4) / (D.FH + 1))
-    local log = v.log or {}
-    local start = math.max(1, #log - lines + 1)
-    local ly = y + 2
-    for i = start, #log do
-        local a = i == #log and 1 or 0.7
-        self:drawText(CC.formatLog(log[i]), x + 4, ly, a, a, a, 1, D.FONT)
-        ly = ly + D.FH + 1
+    if g.logW > D.FH * 4 then
+        self:drawRect(g.logX, g.y, g.logW, g.h, 0.3, 0, 0, 0)
+        local lines = math.floor((g.h - 4) / (D.FH + 1))
+        local log = v.log or {}
+        local start = math.max(1, #log - lines + 1)
+        local ly = g.y + 2
+        for i = start, #log do
+            local a = i == #log and 1 or 0.7
+            self:drawText(D.fitText(CC.formatLog(log[i]), g.logW - 8), g.logX + 4, ly, a, a, a, 1, D.FONT)
+            ly = ly + D.FH + 1
+        end
     end
-    return y + h + D.FH + 10
 end
 
 function W:statusText()
@@ -552,6 +596,12 @@ function W:statusText()
     local m = CC.currentMessage()
     if m then return m.text, m.error end
     if v.phase == "roundOver" or v.phase == "matchOver" then return CC.text("Status_RoundOver"), false end
+    if CC.myAway() then return CC.text("Status_ReturnToTable"), true end
+    if self.pileArmed and v.pile and #v.pile > 0 then
+        return CC.text("Hint_PileArmed", CC.cardName(v.pile[#v.pile])), false
+    end
+    local away = CC.awaySeat()
+    if away then return CC.text("Status_WaitingReturn", CC.seatName(away)), false end
     if not isMyTurn(v) then return CC.text("Status_Waiting", CC.seatName(v.turn)), false end
     if v.phase == "draw" then
         if v.rules.pileTake == "free" and not v.rules.pileFreeze then return CC.text("Status_DrawFree"), false end
@@ -632,26 +682,58 @@ function W:renderHand(y)
     return y + D.HAND_H + raise + 4
 end
 
+-- Felt cloth with a wooden frame, drawn flat.
+function W:drawBackdrop()
+    local th = self:titleBarHeight()
+    local w, h = self.width, self.height - th
+    local f = math.max(4, math.floor(5 * D.S))
+    self:drawTextureScaled(D.tex("bg_felt"), 0, th, w, h, 1, 1, 1, 1)
+    self:drawTextureScaled(D.tex("wood_h"), 0, th, w, f, 1, 1, 1, 1)
+    self:drawTextureScaled(D.tex("wood_h"), 0, self.height - f, w, f, 1, 1, 1, 1)
+    self:drawTextureScaled(D.tex("wood_v"), 0, th, f, h, 1, 1, 1, 1)
+    self:drawTextureScaled(D.tex("wood_v"), w - f, th, f, h, 1, 1, 1, 1)
+end
+
+-- Child elements (the 3D avatars) are drawn between prerender and render: the window content goes
+-- in prerender, underneath them; render adds the table over their legs, then the tooltip.
+function W:prerender()
+    ISCollapsableWindow.prerender(self)
+    self.centreLayout = nil
+    if self.isCollapsed then
+        Avatars.hideAll(self)
+        return
+    end
+    self:drawContent()
+end
+
 function W:render()
+    if not self.isCollapsed and self.centreLayout and CC.view then
+        self:renderCentreFront(self.centreLayout)
+    end
     ISCollapsableWindow.render(self)
-    if self.isCollapsed then return end
+    if not self.isCollapsed then D.drawTooltip(self) end
+end
+
+function W:drawContent()
     D.beginHits(self)
+    self:drawBackdrop()
     local v = CC.view
     if not v or not CC.info then
+        Avatars.hideAll(self)
         self:drawText(CC.text("NoGame"), PAD, self:titleBarHeight() + PAD, 1, 1, 1, 1, D.FONT)
         return
     end
     local width = self.width - PAD * 2
     local y = self:titleBarHeight() + PAD
     local us, them = myTeam(v), myTeam(v) == 1 and 2 or 1
+    Avatars.beginFrame(self)
     y = self:renderScores(y)
-    y = self:renderPlayers(y)
     y = self:drawMeldArea(them, PAD, y, width, THEM_ROWS, CC.text("TheirMelds"), false) + 4
     y = self:renderCentre(y)
     y = self:drawMeldArea(us, PAD, y, width, US_ROWS, CC.text("OurMelds"), true) + 4
     y = self:renderActions(y)
     self:renderHand(y)
-    D.drawTooltip(self)
+    Avatars.endFrame(self)
 end
 
 function W:onMouseDown(x, y)

@@ -2,8 +2,10 @@ if isClient() then return end
 
 require "Canastra/CanastraBot"
 require "Canastra/CanastraNet"
+require "Canastra/CanastraSeating"
 
 local N = Canastra.Net
+local St = Canastra.Seating
 local E = Canastra.Engine
 local B = Canastra.Bot
 local R = Canastra.Rules
@@ -76,12 +78,22 @@ local function info(t)
     local seats = {}
     for i = 1, t.n do
         local s = t.seats[i]
-        seats[i] = { kind = s.kind, name = s.name or "", key = s.key or "" }
+        seats[i] = { kind = s.kind, name = s.name or "", key = s.key or "", away = s.awaySince ~= nil }
+        if s.chair then seats[i].chair = { x = s.chair.x, y = s.chair.y } end
     end
     return {
         id = t.id, n = t.n, status = t.status, hostKey = t.hostKey, hostName = t.hostName,
         rules = R.sanitize(t.rules), seats = seats, x = t.x, y = t.y, z = t.z,
+        tableKey = t.tableKey, centre = t.centre and { x = t.centre.x, y = t.centre.y } or nil,
     }
+end
+
+-- Seat report sent by the client: { table = key, sx, sy, cx, cy, z } (see Canastra.Seating.locate).
+local function seatArg(a)
+    if type(a) ~= "table" or type(a.table) ~= "string" or a.table == "" then return nil end
+    local sx, sy, cx, cy, z = tonumber(a.sx), tonumber(a.sy), tonumber(a.cx), tonumber(a.cy), tonumber(a.z)
+    if not (sx and sy and cx and cy and z) then return nil end
+    return { table = a.table, sx = sx, sy = sy, cx = cx, cy = cy, z = z }
 end
 
 local function summary(t)
@@ -93,7 +105,7 @@ local function summary(t)
     end
     return {
         id = t.id, n = t.n, status = t.status, hostName = t.hostName, x = t.x, y = t.y, z = t.z,
-        filled = filled, open = open, preset = t.rules.preset or "custom",
+        filled = filled, open = open, preset = t.rules.preset or "custom", tableKey = t.tableKey,
     }
 end
 
@@ -125,10 +137,17 @@ function S.pushState(t, onlyKey)
     end
 end
 
+local function anyAway(t)
+    for i = 1, t.n do
+        if t.seats[i].awaySince then return true end
+    end
+    return false
+end
+
 local function scheduleBot(t)
     t.botAt = nil
     local g = t.game
-    if t.status ~= "playing" or not g then return end
+    if t.status ~= "playing" or not g or anyAway(t) then return end
     if g.phase ~= "draw" and g.phase ~= "play" then return end
     if t.seats[g.turn].kind == "bot" then
         t.botAt = now() + math.floor(N.sandbox("BotDelay", 1.0) * 1000)
@@ -272,6 +291,8 @@ function Cmd.create(player, args)
     local key = N.playerKey(player)
     if S.seatOf(player) then return sendError(player, "AlreadySeated") end
     if not hasDecks(player, args) then return sendError(player, "NeedDecks") end
+    local where = seatArg(args.seat)
+    if St.required() and not where then return sendError(player, "NotSeated") end
     local n = tonumber(args.n) == 4 and 4 or 2
     local t = {
         id = S.nextId, n = n, status = "lobby", rules = R.sanitize(args.rules),
@@ -281,6 +302,12 @@ function Cmd.create(player, args)
     }
     S.nextId = S.nextId + 1
     t.seats[1] = { kind = "human", key = key, name = t.hostName }
+    if St.required() then
+        t.tableKey = where.table
+        t.centre = { x = where.cx, y = where.cy }
+        t.x, t.y, t.z = math.floor(where.cx), math.floor(where.cy), where.z
+        t.seats[1].chair = { x = where.sx, y = where.sy }
+    end
     for i = 2, n do
         if args.fillBots and N.sandbox("AllowBots", true) then
             t.seats[i] = newBotSeat(t)
@@ -301,7 +328,13 @@ function Cmd.join(player, args)
     local current = S.seatOf(player)
     if current == t then return S.pushState(t, key) end
     if current then return sendError(player, "AlreadySeated") end
-    if not isNear(player, t) then return sendError(player, "TooFar") end
+    local where = seatArg(args.seat)
+    if t.tableKey then
+        if not where then return sendError(player, "NotSeated") end
+        if where.table ~= t.tableKey then return sendError(player, "WrongTable") end
+    elseif not isNear(player, t) then
+        return sendError(player, "TooFar")
+    end
     local wanted = t.status == "lobby" and "empty" or "bot"
     local seatIdx = tonumber(args.seat)
     if not seatIdx or not t.seats[seatIdx] or t.seats[seatIdx].kind ~= wanted then
@@ -312,10 +345,34 @@ function Cmd.join(player, args)
     end
     if not seatIdx then return sendError(player, "TableFull") end
     t.seats[seatIdx] = { kind = "human", key = key, name = N.playerName(player) }
+    if t.tableKey then t.seats[seatIdx].chair = { x = where.sx, y = where.sy } end
     S.byPlayer[key] = t.id
     S.pushState(t)
     scheduleBot(t)
     S.broadcastList()
+end
+
+-- Periodic report of where the player sits; standing up (or moving to another table) marks the seat away.
+function Cmd.seated(player, args)
+    local t, i = S.seatOf(player)
+    if not t or not t.tableKey then return end
+    local seat = t.seats[i]
+    local where = seatArg(args)
+    local changed = false
+    if where and where.table == t.tableKey then
+        if seat.awaySince then seat.awaySince = nil changed = true end
+        if not seat.chair or seat.chair.x ~= where.sx or seat.chair.y ~= where.sy then
+            seat.chair = { x = where.sx, y = where.sy }
+            changed = true
+        end
+    elseif not seat.awaySince then
+        seat.awaySince = now()
+        changed = true
+    end
+    if changed then
+        S.pushState(t)
+        scheduleBot(t)
+    end
 end
 
 function Cmd.leave(player, args)
@@ -413,6 +470,10 @@ end
 function Cmd.action(player, args)
     local t, i = S.seatOf(player)
     if not t or t.status ~= "playing" or not t.game then return end
+    if anyAway(t) then
+        sendError(player, t.seats[i].awaySince and "Away" or "WaitingAway")
+        return S.pushState(t, N.playerKey(player))
+    end
     local action = sanitizeAction(args.action)
     if not action then return end
     local ok, err = E.apply(t.game, i, action)
@@ -482,7 +543,14 @@ local function checkPresence()
         for i = 1, t.n do
             local seat = t.seats[i]
             if seat.kind == "human" then
-                if S.findPlayer(seat) then
+                local limit = N.sandbox("SeatReturnTime", 120) * 1000
+                if seat.awaySince and now() - seat.awaySince > limit then
+                    local p = S.findPlayer(seat)
+                    if p then N.toClient(p, "left", { away = true }) end
+                    vacate(t, i)
+                    S.broadcastList()
+                    break
+                elseif S.findPlayer(seat) then
                     seat.missingSince = nil
                 elseif not seat.missingSince then
                     seat.missingSince = now()
@@ -517,8 +585,10 @@ function S.everyMinute()
     for _, t in pairs(S.tables) do
         if t.status == "playing" then
             for _, i in ipairs(humans(t)) do
-                local p = S.findPlayer(t.seats[i])
-                if p and isNear(p, t, 2) then relax(p, boredom, unhappiness, stress) end
+                local seat = t.seats[i]
+                local p = S.findPlayer(seat)
+                local present = t.tableKey and not seat.awaySince or (not t.tableKey and p and isNear(p, t, 2))
+                if p and present then relax(p, boredom, unhappiness, stress) end
             end
         end
     end

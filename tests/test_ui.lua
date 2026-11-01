@@ -35,6 +35,7 @@ local function renderAll()
 end
 
 local function clickHit(win, pred)
+    win:prerender()
     win:render()
     for i = #win.hits, 1, -1 do
         local r = win.hits[i]
@@ -138,6 +139,63 @@ local function playMatch(preset, n, rounds)
         win:sort("rank")
         check((MOCK_FILES["Canastra_settings.txt"] or ""):find("sortMode=rank", 1, true), "sort mode saved")
     end
+    do
+        renderAll()
+        local v = CC.view
+        local expected = v.n == 4 and { "left", "across", "right" } or { "across" }
+        for seat = 1, v.n do
+            local a = win.avatars and win.avatars["portrait_" .. seat]
+            local cfg = a and a.panel.cfg or {}
+            check(a and a.panel.visible and cfg.setState == "idle" and cfg.setZoom == CanastraAvatars.PORTRAIT.zoom,
+                preset .. ": portrait of seat " .. seat .. " shown")
+        end
+        for _, pos in ipairs(expected) do
+            local a = win.avatars and win.avatars["scene_" .. pos]
+            local cfg = a and a.panel.cfg or {}
+            check(a and a.panel.visible, preset .. ": " .. pos .. " avatar shown")
+            check(cfg.setState == "sitonfurniture" and cfg.var_SitOnFurnitureAnim == "Idle" and cfg.event_EventSitOnFurniture,
+                preset .. ": " .. pos .. " avatar is seated")
+            check(cfg.outfit ~= nil or cfg.setCharacter ~= nil, preset .. ": " .. pos .. " avatar dressed")
+            local first = {}
+            for i, f in ipairs(cfg.order or {}) do first[f] = first[f] or i end
+            local body = first.setSurvivorDesc or first.setCharacter
+            check(body and first.setAnimSetName and first.setState and first.setAnimSetName < body and first.setState < body,
+                preset .. ": " .. pos .. " anim set and pose chosen before the character")
+            local p = a and a.panel
+            if p then
+                check(p.x >= 0 and p.x + p.width <= win.width and p.y + p.height <= win.height,
+                    preset .. ": " .. pos .. " avatar inside the window")
+                check(p.consumesMouse == false, preset .. ": " .. pos .. " avatar lets clicks through to the table")
+            end
+        end
+        local g = win.centreLayout
+        check(g and g.logW > D.FH * 4 and g.tableX + g.tableW <= win.width, preset .. ": table scene fits the window")
+        -- render runs after the child avatars: it may only paint the table over their lower part
+        local covered = {}
+        local function hit(x, y, w, h)
+            for slot, a in pairs(win.avatars or {}) do
+                local p = a.panel
+                if p.visible then
+                    local top, bottom = p.y, p.y + p.height
+                    local left, right = p.x, p.x + p.width
+                    if slot == "scene_across" then
+                        bottom = g.tableY
+                        left, right = p.x + p.width / 2 - g.unitPx * 0.3, p.x + p.width / 2 + g.unitPx * 0.3
+                    end
+                    if x < right and left < x + w and y < bottom and top < y + h then covered[slot] = true end
+                end
+            end
+        end
+        local origTex, origRect = win.drawTextureScaled, win.drawRect
+        win.drawTextureScaled = function(self, tex, x, y, w, h) hit(x, y, w, h) end
+        win.drawRect = function(self, x, y, w, h) hit(x, y, w, h) end
+        win.mouseOver = false
+        win:render()
+        win.drawTextureScaled, win.drawRect = origTex, origRect
+        for slot in pairs(covered) do
+            check(false, preset .. ": " .. slot .. " is painted over after it renders")
+        end
+    end
     if preset == "canastra_brasileira" then
         local tip = CC.text("ViewRules")
         check(clickHit(win, function(r) return r.tooltip == tip end), "table rules button found")
@@ -235,6 +293,125 @@ playMatch("stbl", 2, 2)
 playMatch("buraco_1morto", 4, 2)
 playMatch("canastra_brasileira", 4, 2)
 playMatch("canastra_brasileira", 2, 2)
+
+-- ------------------------------------------------------------------ seating at a physical table
+print("Seating:")
+local St = Canastra.Seating
+local where = St.locate(MOCK_PLAYER)
+check(where and where.table == "100,199,0" and where.sx == 100 and where.sy == 200, "locate finds the chair and its table")
+check(where and where.cx == 101 and where.cy == 199.5, "a two-tile table counts as one, centred between its tiles")
+check(CC.joinBlocker({ tableKey = "100,199,0" }) == nil and CC.joinBlocker({ tableKey = "5,5,0" }) == "WrongTable",
+    "joining requires the same table")
+
+local P = function(chairs, n) return St.positions(n or 4, 1, chairs, { x = 10.5, y = 10.5 }) end
+local pos = P({ [1] = { x = 10, y = 11 }, [2] = { x = 11, y = 10 }, [3] = { x = 10, y = 9 }, [4] = { x = 9, y = 10 } })
+check(pos.left == 4 and pos.across == 3 and pos.right == 2, "players are placed where their chairs really are")
+pos = P({ [1] = { x = 10, y = 11 }, [3] = { x = 11, y = 10 } })
+check(pos.right == 3 and pos.left and pos.across and pos.left ~= pos.across, "bots fill the chairs nobody sits on")
+pos = St.positions(4, 1, { [1] = { x = 10, y = 11 }, [2] = { x = 11, y = 9 }, [3] = { x = 11, y = 11 }, [4] = { x = 10, y = 9 } },
+    { x = 11, y = 10.5 })
+check(pos.right == 3 and pos.across == 2 and pos.left == 4, "long table: neighbour on my side is on my right, diagonal is across")
+pos = P({ [1] = { x = 10, y = 11 }, [2] = { x = 10, y = 9 } }, 2)
+check(pos.across == 2 and pos.left == nil, "1x1 shows the opponent across")
+
+mockSit(MOCK_PLAYER, nil)
+CC.resetSeatCache()
+CanastraLobbyWindow.open()
+renderAll()
+check(not clickHit(CanastraLobbyWindow.instance, function(r) return r.fn == CanastraLobbyWindow.create end),
+    "create is disabled while standing")
+CanastraLobbyWindow.instance:create()
+check(CC.info == nil and CC.currentMessage() and CC.currentMessage().text == CC.text("Err_NotSeated"), "server refuses a standing host")
+mockSit(MOCK_PLAYER, 120, 220, 0)
+CC.resetSeatCache()
+check(select(2, St.locate(MOCK_PLAYER)) == "ChairNoTable", "a chair away from any table is not enough")
+mockSit(MOCK_PLAYER, 100, 200, 0)
+CC.resetSeatCache()
+
+CC.message = nil
+CanastraLobbyWindow.pending.n = 2
+CanastraLobbyWindow.pending.fillBots = true
+CanastraLobbyWindow.instance:create()
+CC.send("start", { decks = 2 })
+local seatT = CC.info and S.tables[CC.info.id]
+check(seatT and seatT.tableKey == "100,199,0" and CC.info.seats[CC.seat].chair ~= nil, "match remembers the table and the chair")
+if seatT then
+    local g = seatT.game
+    g.turn = CC.seat
+    g.phase = "draw"
+    mockSit(MOCK_PLAYER, nil)
+    for _ = 1, 3 do advance(1100) triggerEvent("OnTick") end
+    check(CC.myAway(), "standing up marks the player away")
+    check(CanastraGameWindow.instance:statusText() == CC.text("Status_ReturnToTable"), "status asks to return to the table")
+    local hand = #g.hands[CC.seat]
+    CC.action({ type = "draw" })
+    check(#g.hands[CC.seat] == hand and CC.currentMessage().text == CC.text("Err_Away"), "actions are refused while away")
+    g.turn = CC.seat % 2 + 1
+    seatT.botAt = nil
+    for _ = 1, 5 do advance(1100) triggerEvent("OnTick") end
+    check(g.turn ~= CC.seat and seatT.botAt == nil, "bots wait while a player is away")
+    mockSit(MOCK_PLAYER, 100, 200, 0)
+    for _ = 1, 3 do advance(1100) triggerEvent("OnTick") end
+    check(not CC.myAway(), "sitting back down resumes the match")
+    mockSit(MOCK_PLAYER, nil)
+    for _ = 1, 130 do
+        advance(1100)
+        triggerEvent("OnTick")
+        if not CC.info then break end
+    end
+    check(CC.info == nil and CC.currentMessage() and CC.currentMessage().text == CC.text("Err_AwayTimeout"),
+        "leaving the table for too long gives up the seat")
+    mockSit(MOCK_PLAYER, 100, 200, 0)
+end
+if CanastraGameWindow.instance then CanastraGameWindow.instance:close() end
+CC.message = nil
+
+-- ------------------------------------------------------------------ pile first, then the hand cards
+print("Pile first:")
+CC.message = nil
+CanastraLobbyWindow.open()
+CanastraLobbyWindow.pending.n = 2
+CanastraLobbyWindow.pending.fillBots = true
+CanastraLobbyWindow.pending.rules = R.fromPreset("canastra_brasileira")
+CanastraLobbyWindow.instance:create()
+CC.send("start", { decks = 2 })
+local pt = CC.info and S.tables[CC.info.id]
+if pt then
+    local g, me = pt.game, CC.seat
+    g.hasMelded[g.teamOf[me]] = true
+    g.turn, g.phase = me, "draw"
+    local aceS, aceH, aceD = C.make(1, 1, 1), C.make(1, 2, 1), C.make(2, 4, 1)
+    g.hands[me] = { aceS, aceH, C.make(1, 3, 5), C.make(1, 4, 7), C.make(1, 1, 9), C.make(1, 2, 12) }
+    g.pile = { C.make(2, 3, 6), aceD }
+    S.pushState(pt)
+    local win = CanastraGameWindow.instance
+    renderAll()
+    check(clickHit(win, function(r) return r.fn == CanastraGameWindow.clickPile end), "pile clicked first")
+    check(win.pileArmed and g.phase == "draw", "clicking the pile with nothing selected sets its top card aside")
+    advance(600)
+    win:toggleCard(aceS)
+    check(g.phase == "draw", "one card is not a meld yet")
+    advance(600)
+    win:toggleCard(aceH)
+    check(g.phase == "play" and #g.pile == 0, "the second ace takes the pile at once")
+    local found = false
+    for _, m in ipairs(g.melds[g.teamOf[me]]) do
+        if #m.cards == 3 and C.rank(m.cards[1]) == 1 then found = true end
+    end
+    check(found, "the three aces were melded")
+    check(not win.pileArmed, "pile no longer set aside after taking it")
+
+    -- clicking the pile again cancels
+    g.turn, g.phase = me, "draw"
+    g.pile = { C.make(2, 1, 9) }
+    S.pushState(pt)
+    win:clickPile()
+    win:clickPile()
+    check(not win.pileArmed, "clicking the pile again cancels")
+    win:leave()
+    win:leave()
+end
+CC.message = nil
 
 print("  first-draw swaps clicked through the UI: " .. tostring(redrawsByUI or 0))
 check((notHighlighted or 0) == 0, "drawn cards stay highlighted for the whole turn (" .. tostring(notHighlighted or 0) .. " misses)")

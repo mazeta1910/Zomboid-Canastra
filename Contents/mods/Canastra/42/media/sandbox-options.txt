@@ -10,6 +10,16 @@ option Canastra.MaxDistance
 	type = integer, min = 2, max = 50, default = 8,
 	page = Canastra, translation = Canastra_MaxDistance,
 }
+option Canastra.RequireSeat
+{
+	type = boolean, default = true,
+	page = Canastra, translation = Canastra_RequireSeat,
+}
+option Canastra.SeatReturnTime
+{
+	type = integer, min = 15, max = 900, default = 120,
+	page = Canastra, translation = Canastra_SeatReturnTime,
+}
 option Canastra.AllowBots
 {
 	type = boolean, default = true,

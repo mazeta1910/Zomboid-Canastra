@@ -299,6 +299,143 @@ def icons():
     save(img, "icon_colors.png")
 
 
+# ----------------------------------------------------------------- table scene (flat colours, no lighting)
+# Keep the table fractions in sync with CanastraTableScene.TABLE.
+
+TABLE_RIM = 0.06      # back and front rim, fraction of the table height
+TABLE_APRON = 0.2     # front face below the top
+TABLE_END = 0.3       # width of each end piece, fraction of the height
+TABLE_INSET = 0.2     # how far the back corners sit inwards (perspective)
+TABLE_H = 192
+
+FELT_BG = (16, 58, 36)
+FELT_TABLE = (30, 104, 60)
+WOOD = (122, 78, 44)
+WOOD_DARK = (84, 52, 30)
+
+
+def noisy(size, base, amount, seed):
+    import random
+    rnd = random.Random(seed)
+    img = Image.new("RGB", size, base)
+    px = img.load()
+    for y in range(size[1]):
+        for x in range(size[0]):
+            n = rnd.randint(-amount, amount)
+            px[x, y] = tuple(max(0, min(255, c + n)) for c in base)
+    return img
+
+
+def wood_grain(size, base, seed, vertical=False):
+    import random
+    rnd = random.Random(seed)
+    w, h = size if not vertical else (size[1], size[0])
+    img = noisy((w, h), base, 4, seed)
+    d = ImageDraw.Draw(img)
+    for _ in range(h // 2):
+        y = rnd.uniform(0, h)
+        shade = rnd.randint(-16, 10)
+        col = tuple(max(0, min(255, c + shade)) for c in base)
+        pts = []
+        phase, amp = rnd.uniform(0, 6.28), rnd.uniform(0.3, 1.2)
+        for x in range(0, w + 8, 8):
+            pts.append((x, y + amp * math.sin(phase + x / rnd.uniform(30, 90))))
+        d.line(pts, fill=col, width=1)
+    if vertical:
+        img = img.transpose(Image.ROTATE_90)
+    return img
+
+
+def felt_and_wood():
+    save(noisy((512, 512), FELT_BG, 5, 1).convert("RGBA"), "bg_felt.png")
+    save(wood_grain((512, 24), WOOD_DARK, 2).convert("RGBA"), "wood_h.png")
+    save(wood_grain((512, 24), WOOD_DARK, 3, vertical=True).convert("RGBA"), "wood_v.png")
+
+
+def table_pieces():
+    H = TABLE_H
+    end = int(H * TABLE_END)
+    mid = 16
+    W = end * 2 + mid
+    sc = 4
+    big = Image.new("RGBA", (W * sc, H * sc), (0, 0, 0, 0))
+    top_bottom = H * (1 - TABLE_APRON)
+    rim = H * TABLE_RIM
+    inset = H * TABLE_INSET
+    side_rim = rim * 0.9
+
+    def S(pts):
+        return [(x * sc, y * sc) for x, y in pts]
+
+    outer = [(inset, 0), (W - inset, 0), (W, top_bottom), (0, top_bottom)]
+    felt = [(inset + side_rim, rim), (W - inset - side_rim, rim), (W - side_rim, top_bottom - rim), (side_rim, top_bottom - rim)]
+    wood_img = wood_grain((W * sc, H * sc), WOOD, 4).convert("RGBA")
+    felt_img = noisy((W * sc, H * sc), FELT_TABLE, 6, 5).convert("RGBA")
+    apron_img = wood_grain((W * sc, H * sc), WOOD_DARK, 6).convert("RGBA")
+    m = Image.new("L", big.size, 0)
+    ImageDraw.Draw(m).polygon(S(outer), fill=255)
+    big.paste(wood_img, (0, 0), m)
+    m = Image.new("L", big.size, 0)
+    ImageDraw.Draw(m).polygon(S(felt), fill=255)
+    big.paste(felt_img, (0, 0), m)
+    m = Image.new("L", big.size, 0)
+    ImageDraw.Draw(m).rectangle((0, top_bottom * sc, W * sc, H * sc), fill=255)
+    big.paste(apron_img, (0, 0), m)
+    small = big.resize((W, H), Image.LANCZOS)
+    save(small.crop((0, 0, end, H)), "table_l.png")
+    save(small.crop((end, 0, end + mid, H)), "table_m.png")
+    save(small.crop((end + mid, 0, W, H)), "table_r.png")
+
+
+def chair_side(facing_right=True):
+    s = 128
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    wood = WOOD + (255,)
+    dark = WOOD_DARK + (255,)
+    # seat, back post, legs (profile facing right: back on the left)
+    d.rectangle((24, 70, 104, 80), fill=wood)
+    d.rectangle((24, 12, 34, 80), fill=wood)
+    d.rectangle((24, 80, 32, 126), fill=dark)
+    d.rectangle((96, 80, 104, 126), fill=dark)
+    d.rectangle((24, 18, 34, 26), fill=dark)
+    if not facing_right:
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+    return img
+
+
+def chair_back():
+    s = 128
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    wood = WOOD + (255,)
+    dark = WOOD_DARK + (255,)
+    d.rectangle((22, 8, 32, 128), fill=wood)
+    d.rectangle((96, 8, 106, 128), fill=wood)
+    d.rounded_rectangle((18, 6, 110, 22), radius=6, fill=wood)
+    for x in (46, 60, 74):
+        d.rectangle((x, 22, x + 8, 128), fill=dark)
+    return img
+
+
+def silhouette():
+    s = 128
+    big = Image.new("L", (s * 4, s * 4), 0)
+    d = ImageDraw.Draw(big)
+    d.ellipse((s * 4 * 0.34, s * 4 * 0.1, s * 4 * 0.66, s * 4 * 0.46), fill=255)
+    d.rounded_rectangle((s * 4 * 0.16, s * 4 * 0.5, s * 4 * 0.84, s * 4 * 1.2), radius=s * 4 * 0.2, fill=255)
+    save(export_mask(big, s), "silhouette.png")
+
+
+def table_scene():
+    felt_and_wood()
+    table_pieces()
+    save(chair_side(True), "chair_side_l.png")
+    save(chair_side(False), "chair_side_r.png")
+    save(chair_back(), "chair_back.png")
+    silhouette()
+
+
 # ----------------------------------------------------------------- composed cards (poster / preview)
 # Mirrors CanastraDraw.drawCard so the poster and the preview sheet match the game.
 
@@ -429,6 +566,7 @@ if __name__ == "__main__":
     joker()
     card_backgrounds()
     icons()
+    table_scene()
     poster()
     if len(sys.argv) > 1:
         preview_sheet(sys.argv[1])

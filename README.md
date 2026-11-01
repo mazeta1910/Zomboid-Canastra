@@ -7,15 +7,18 @@ Jogue Buraco e Canastra com os baralhos (`Base.CardDeck`) que você encontra no 
 ## Como jogar
 
 1. Tenha **2 baralhos** no inventário (configurável no sandbox).
-2. Clique com o botão direito em um baralho → **Jogar Buraco / Canastra**. Mesas próximas também aparecem no menu de contexto do mundo.
-3. No lobby: escolha 1x1 ou 2x2, a variante de regras (ou ajuste regra a regra na engrenagem), se quer bots, e crie a mesa. Outros jogadores próximos podem sentar nos lugares livres; o anfitrião pode adicionar/remover bots e trocar lugares antes de iniciar.
+2. **Sente-se numa cadeira junto a uma mesa** (clique com o botão direito na cadeira → Sentar). Todos os jogadores da partida precisam sentar na mesma mesa; na tela, cada um aparece do lado em que está sentado de verdade.
+3. Clique com o botão direito em um baralho → **Jogar Buraco / Canastra**. Mesas próximas também aparecem no menu de contexto do mundo.
+4. No lobby: escolha 1x1 ou 2x2, a variante de regras (ou ajuste regra a regra na engrenagem), se quer bots, e crie a mesa. Outros jogadores sentados à mesma mesa podem ocupar os lugares livres; o anfitrião pode adicionar/remover bots e trocar lugares antes de iniciar.
+
+Se alguém se levantar durante a partida, o jogo fica parado (bots inclusive) até essa pessoa voltar a sentar. Depois do tempo limite (2 min por padrão), o lugar dela passa para um bot. A exigência de sentar pode ser desligada no sandbox; aí vale só a distância até a mesa.
 
 ### Controles na mesa
 
 | Ação | Como |
 | --- | --- |
 | Comprar | clique no monte |
-| Pegar o lixo | clique no lixo (no buraco fechado: selecione as cartas que vão com a carta do topo, ou clique antes no jogo onde ela entra) |
+| Pegar o lixo | clique no lixo (no buraco fechado: clique no lixo e depois nas cartas da mão que formam jogo com a do topo — ao completar o jogo ele é pego na hora —, ou selecione as cartas antes e clique no lixo, ou clique num jogo seu onde a carta do topo entra) |
 | Selecionar cartas | clique nas cartas da mão |
 | Baixar jogo novo | selecione as cartas e clique na área vazia dos seus jogos (ou no ícone de baixar) |
 | Adicionar a um jogo | selecione as cartas e clique no jogo |
@@ -36,6 +39,8 @@ Buraco aberto, Buraco fechado, STBL (só sequências), Buraco 1 morto, Buraco se
 | --- | --- |
 | Baralhos necessários | 2 |
 | Distância máxima da mesa | 8 |
+| Exigir sentar à mesa | sim |
+| Tempo para voltar à mesa (s) | 120 |
 | Permitir bots | sim |
 | Atraso dos bots (s) | 1.0 |
 | Tédio / tristeza / estresse reduzidos por minuto | 0.3 / 0.1 / 0.002 |
