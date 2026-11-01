@@ -143,24 +143,20 @@ function W:refresh()
     if self.sortMode == "rank" then C.sortByRank(order) else C.sortBySuit(order) end
     self.order = order
     local myTurn = v.turn == v.you and (v.phase == "draw" or v.phase == "play")
-    -- A single card gained this turn stays highlighted until the turn ends; taking several
-    -- (the pile, a two-card draw) highlights nothing.
+    -- Cards arriving one at a time (a draw, a red-three replacement) stay highlighted until the
+    -- turn ends; taking several at once (the pile, a two-card draw, the dead pile) clears them all.
     local previous = myTurn and self.fresh or {}
     self.fresh = {}
-    local gained = 0
     for id in pairs(previous) do
-        if inHand[id] then
-            self.fresh[id] = true
-            gained = gained + 1
-        end
+        if inHand[id] then self.fresh[id] = true end
     end
     if not firstDeal then
-        for _, id in ipairs(fresh) do
-            self.fresh[id] = true
-            gained = gained + 1
+        if #fresh == 1 then
+            self.fresh[fresh[1]] = true
+        elseif #fresh > 1 then
+            self.fresh = {}
         end
     end
-    if gained > 1 then self.fresh = {} end
     for id in pairs(self.selected) do
         if not inHand[id] then self.selected[id] = nil end
     end

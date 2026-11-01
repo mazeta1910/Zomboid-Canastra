@@ -63,10 +63,8 @@ local function humanStep(win, g, seat)
     if a.type == "draw" then
         local had = {}
         for _, id in ipairs(g.hands[seat]) do had[id] = true end
-        local replaced = {}
-        for id in pairs(win.fresh or {}) do replaced[#replaced + 1] = id end
         if not clickHit(win, function(r) return r.fn == CanastraGameWindow.clickStock end) then return false, "stock hit" end
-        drawnThisTurn, handAfterDraw = replaced, {}
+        drawnThisTurn, handAfterDraw = {}, {}
         for _, id in ipairs(g.hands[seat]) do
             handAfterDraw[id] = true
             if not had[id] then drawnThisTurn[#drawnThisTurn + 1] = id end
@@ -463,6 +461,27 @@ if pt then
     win:clickPile()
     win:clickPile()
     check(not win.pileArmed, "clicking the pile again cancels")
+
+    -- a red three replaced at the start of the turn, then a draw: both cards arrived alone, both highlighted
+    g.turn, g.phase = me % 2 + 1, "draw"
+    g.hands[me] = { C.make(1, 2, 3), C.make(1, 1, 5), C.make(1, 4, 10) }
+    S.pushState(pt)
+    g.turn = me
+    Canastra.Engine.processRedThrees(g, me)
+    S.pushState(pt)
+    local replacement
+    for _, id in ipairs(g.hands[me]) do
+        if id ~= C.make(1, 1, 5) and id ~= C.make(1, 4, 10) then replacement = id end
+    end
+    check(replacement and win.fresh[replacement], "the red three's replacement is highlighted")
+    local before = {}
+    for _, id in ipairs(g.hands[me]) do before[id] = true end
+    win:clickStock()
+    local bought
+    for _, id in ipairs(g.hands[me]) do
+        if not before[id] then bought = id end
+    end
+    check(bought and win.fresh[bought] and win.fresh[replacement], "the card drawn after a red-three replacement is highlighted too")
 
     -- the hand's first drawn card: discarding it swaps it for another instead of ending the turn
     g.turn, g.phase, g.redrawOpen, g.redrawCard = me, "draw", true, nil
