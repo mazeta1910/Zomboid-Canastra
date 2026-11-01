@@ -1,0 +1,19 @@
+{
+    "Sandbox_Canastra": "Buraco & Canasta",
+    "Sandbox_Canastra_RequiredDecks": "Decks to create a table",
+    "Sandbox_Canastra_RequiredDecks_tooltip": "How many card decks the host must carry. 0 disables the requirement.",
+    "Sandbox_Canastra_MaxDistance": "Maximum table distance",
+    "Sandbox_Canastra_MaxDistance_tooltip": "Distance in tiles to see and join a table.",
+    "Sandbox_Canastra_AllowBots": "Allow bots",
+    "Sandbox_Canastra_AllowBots_tooltip": "Allows filling seats with computer-controlled players.",
+    "Sandbox_Canastra_BotDelay": "Bot move delay (s)",
+    "Sandbox_Canastra_BotDelay_tooltip": "Real seconds between each bot action.",
+    "Sandbox_Canastra_BoredomPerMinute": "Boredom reduced per minute",
+    "Sandbox_Canastra_BoredomPerMinute_tooltip": "Boredom (0-100) each player loses per in-game minute while playing.",
+    "Sandbox_Canastra_UnhappinessPerMinute": "Unhappiness reduced per minute",
+    "Sandbox_Canastra_UnhappinessPerMinute_tooltip": "Unhappiness (0-100) each player loses per in-game minute while playing.",
+    "Sandbox_Canastra_StressPerMinute": "Stress reduced per minute",
+    "Sandbox_Canastra_StressPerMinute_tooltip": "Stress (0-1) each player loses per in-game minute while playing.",
+    "Sandbox_Canastra_WinUnhappinessBonus": "Victory bonus",
+    "Sandbox_Canastra_WinUnhappinessBonus_tooltip": "Boredom and unhappiness removed from the winners of a match."
+}

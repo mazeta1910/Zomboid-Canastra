@@ -1,0 +1,19 @@
+{
+    "Sandbox_Canastra": "Buraco & Canastra",
+    "Sandbox_Canastra_RequiredDecks": "Baralhos para criar mesa",
+    "Sandbox_Canastra_RequiredDecks_tooltip": "Quantos baralhos o anfitrião precisa ter no inventário. 0 desativa a exigência.",
+    "Sandbox_Canastra_MaxDistance": "Distância máxima da mesa",
+    "Sandbox_Canastra_MaxDistance_tooltip": "Distância em quadrados para ver e entrar numa mesa.",
+    "Sandbox_Canastra_AllowBots": "Permitir bots",
+    "Sandbox_Canastra_AllowBots_tooltip": "Permite preencher lugares com jogadores controlados pelo computador.",
+    "Sandbox_Canastra_BotDelay": "Tempo por jogada dos bots (s)",
+    "Sandbox_Canastra_BotDelay_tooltip": "Segundos reais entre cada ação de um bot.",
+    "Sandbox_Canastra_BoredomPerMinute": "Tédio reduzido por minuto",
+    "Sandbox_Canastra_BoredomPerMinute_tooltip": "Quanto tédio (0-100) cada jogador perde por minuto de jogo enquanto joga.",
+    "Sandbox_Canastra_UnhappinessPerMinute": "Infelicidade reduzida por minuto",
+    "Sandbox_Canastra_UnhappinessPerMinute_tooltip": "Quanta infelicidade (0-100) cada jogador perde por minuto de jogo enquanto joga.",
+    "Sandbox_Canastra_StressPerMinute": "Estresse reduzido por minuto",
+    "Sandbox_Canastra_StressPerMinute_tooltip": "Quanto estresse (0-1) cada jogador perde por minuto de jogo enquanto joga.",
+    "Sandbox_Canastra_WinUnhappinessBonus": "Bônus de vitória",
+    "Sandbox_Canastra_WinUnhappinessBonus_tooltip": "Tédio e infelicidade removidos de quem vence uma partida."
+}

@@ -1,0 +1,42 @@
+VERSION = 1,
+
+option Canastra.RequiredDecks
+{
+	type = integer, min = 0, max = 4, default = 2,
+	page = Canastra, translation = Canastra_RequiredDecks,
+}
+option Canastra.MaxDistance
+{
+	type = integer, min = 2, max = 50, default = 8,
+	page = Canastra, translation = Canastra_MaxDistance,
+}
+option Canastra.AllowBots
+{
+	type = boolean, default = true,
+	page = Canastra, translation = Canastra_AllowBots,
+}
+option Canastra.BotDelay
+{
+	type = double, min = 0.2, max = 5.0, default = 1.0,
+	page = Canastra, translation = Canastra_BotDelay,
+}
+option Canastra.BoredomPerMinute
+{
+	type = double, min = 0.0, max = 5.0, default = 0.3,
+	page = Canastra, translation = Canastra_BoredomPerMinute,
+}
+option Canastra.UnhappinessPerMinute
+{
+	type = double, min = 0.0, max = 5.0, default = 0.1,
+	page = Canastra, translation = Canastra_UnhappinessPerMinute,
+}
+option Canastra.StressPerMinute
+{
+	type = double, min = 0.0, max = 0.05, default = 0.002,
+	page = Canastra, translation = Canastra_StressPerMinute,
+}
+option Canastra.WinUnhappinessBonus
+{
+	type = double, min = 0.0, max = 100.0, default = 10.0,
+	page = Canastra, translation = Canastra_WinUnhappinessBonus,
+}
